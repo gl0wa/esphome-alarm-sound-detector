@@ -38,7 +38,8 @@ import proto  # noqa: E402
 
 DEFAULT_PORT = 6060
 HANDSHAKE_TIMEOUT_S = 10
-RECV_TIMEOUT_S = 15.0
+# The device streams continuously, so silence this long means a dead (half-open) link.
+RECV_TIMEOUT_S = 8.0
 BACKOFFS = (1, 2, 4, 8, 15, 30)
 
 
@@ -382,8 +383,10 @@ def run_record(host: str, port: int, psk: bytes, out_dir: str, mode: str,
                 while not stop.is_set():
                     try:
                         ftype, payload = client.read_frame()
-                    except socket.timeout:
-                        continue
+                    except socket.timeout as e:
+                        # Never resume after a timeout: it may have hit mid-frame (desync),
+                        # and a silent link is dead anyway. Reconnect with a fresh session.
+                        raise ConnectionError(f"no data for {RECV_TIMEOUT_S:.0f} s; reconnecting") from e
                     if on_frame is not None:
                         on_frame(ftype, payload)
                     if ftype == proto.FRAME_AUDIO:
