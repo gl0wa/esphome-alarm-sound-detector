@@ -4,3 +4,4 @@ numpy
 soundfile
 # Test-only:
 pytest
+scipy
