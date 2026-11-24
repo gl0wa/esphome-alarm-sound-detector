@@ -1,0 +1,51 @@
+# --- Secrets & private configuration (never commit) ---
+secrets.yaml
+*.secrets.yaml
+!secrets.example.yaml
+.env
+.env.*
+*.key
+*.pem
+*.local.yaml
+local/
+
+# --- Household audio & derived data (keep local) ---
+data/
+recordings/
+*.wav
+*.flac
+*.mp3
+*.m4a
+*.ogg
+*.opus
+*.raw
+*.pcm
+*.npz
+*.npy
+# Synthetic test fixtures are allowed explicitly
+!tests/fixtures/synthetic/**
+
+# --- Build artifacts ---
+.esphome/
+firmware/.esphome/
+.pioenvs/
+.piolibdeps/
+build/
+dist/
+*.bin
+*.elf
+
+# --- Python ---
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
