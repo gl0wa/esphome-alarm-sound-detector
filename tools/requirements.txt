@@ -1,0 +1,6 @@
+# Runtime deps for tools/capture (Python 3.13).
+cryptography
+numpy
+soundfile
+# Test-only:
+pytest

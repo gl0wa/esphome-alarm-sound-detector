@@ -1,0 +1,65 @@
+# Development-only firmware: base detector + raw-audio capture for
+# labelled training-data collection. NEVER flash to a permanently
+# deployed device; capture streams raw microphone audio over the LAN.
+packages:
+  base: !include thermomix-detector.yaml
+
+# Capture at 48 kHz: do NOT assume the alarm spectrum fits below 8 kHz.
+substitutions:
+  mic_sample_rate: "48000"
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+
+audio_capture:
+  id: capture
+  microphone:
+    microphone: mic
+    bits_per_sample: 24
+    gain_factor: 1
+  port: 6060
+  psk: !secret capture_psk
+
+switch:
+  - platform: audio_capture
+    audio_capture_id: capture
+    name: "Audio capture"
+    # default OFF; restore_mode configurable, e.g. RESTORE_DEFAULT_OFF
+
+sensor:
+  - platform: audio_capture
+    audio_capture_id: capture
+    name: "Capture dropped bytes"
+
+binary_sensor:
+  - platform: audio_capture
+    audio_capture_id: capture
+    name: "Capture client connected"
+
+button:
+  - platform: template
+    name: "Mark: Thermomix alarm"
+    on_press:
+      audio_capture.mark:
+        id: capture
+        label: "thermomix_alarm"
+  - platform: template
+    name: "Mark: Thermomix other sound"
+    on_press:
+      audio_capture.mark:
+        id: capture
+        label: "thermomix_other"
+  - platform: template
+    name: "Mark: Confuser sound"
+    on_press:
+      audio_capture.mark:
+        id: capture
+        label: "confuser"
+  - platform: template
+    name: "Mark: Background"
+    on_press:
+      audio_capture.mark:
+        id: capture
+        label: "background"
