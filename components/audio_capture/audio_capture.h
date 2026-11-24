@@ -112,6 +112,7 @@ class AudioCaptureComponent : public Component {
   size_t chunk_remaining_{0};                 // loop only: PCM bytes left in current ring-buffer record
   uint32_t pending_gap_frames_{0};            // loop only: gap to apply before the current record
   uint32_t last_stats_ms_{0};
+  uint32_t last_tx_progress_ms_{0};  // last time the TX backlog drained or advanced
 
   // Outgoing data: drained-but-unsent audio and encrypted backlog for partial writes.
   std::vector<uint8_t> audio_pending_;

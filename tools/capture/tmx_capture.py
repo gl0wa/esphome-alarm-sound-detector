@@ -64,6 +64,11 @@ def recv_exact(sock: socket.socket, n: int) -> bytes:
     return bytes(buf)
 
 
+MAX_FRAME_LEN = 16384
+# Larger sample-index jumps are treated as a protocol violation, never zero-filled.
+MAX_GAP_SECONDS = 10.0
+
+
 def wire_pcm_to_i32(pcm: bytes, bits: int) -> np.ndarray:
     """Decode wire PCM (16, 24 packed, or 32-bit LE) to left-justified int32."""
     if bits == 16:
@@ -129,6 +134,9 @@ class TmxClient:
         assert self.sock is not None and self.key is not None
         blob = recv_exact(self.sock, 4)
         length = int.from_bytes(blob, "little")
+        # Bound attacker-controlled length before allocating (IV + type + 8 KiB audio + tag fits easily).
+        if not (12 + 1 + 16) <= length <= MAX_FRAME_LEN:
+            raise ConnectionError(f"invalid frame length {length}")
         blob += recv_exact(self.sock, length)
         ftype, payload = proto.decrypt_frame(self.key, self.counter, blob)
         self.counter += 1
@@ -384,6 +392,8 @@ def run_record(host: str, port: int, psk: bytes, out_dir: str, mode: str,
                             if idx < expected_idx:
                                 raise ValueError(f"sample index went backwards {idx} < {expected_idx}")
                             gap = idx - expected_idx
+                            if gap > MAX_GAP_SECONDS * sr:
+                                raise ValueError(f"implausible sample-index jump of {gap} frames")
                             print(f"\n[gap] {gap} frames ({gap / sr * 1000:.0f} ms) zero-filled", flush=True)
                             if hasattr(rec, "gaps"):
                                 rec.gaps.append({"at_sample_index": expected_idx, "frames": gap})

@@ -79,11 +79,19 @@ Frame types:
   sensor is unaffected.
 - Mic audio arrives on another task into a 64 KiB internal-RAM ring
   buffer; the main loop drains it into audio frames (max ~8 KiB audio
-  payload each, max 6 frames per loop iteration). Overflow bytes are
-  **counted, never blocking**, and reported via stats frames and the
-  `dropped_bytes` sensor.
-- A slow client (more than 256 KiB of unsent encrypted backlog) is
-  disconnected rather than growing RAM without bound.
+  payload each, max 6 frames per loop iteration). The ring buffer holds
+  records `[u32 len][u32 frames_dropped_before][pcm]`; a microphone chunk
+  is stored whole or dropped whole, so PCM frames are never split.
+  Drops are **counted, never blocking**, reported via stats frames and the
+  `dropped_bytes` sensor, and appear on the wire as a jump in the audio
+  frame `sample_index`. The recorder zero-fills such gaps (up to 10 s;
+  larger jumps abort the session) and lists them in the sidecar JSON.
+- Encrypted TX backlog is a fixed 24 KiB buffer allocated once (the target
+  has no PSRAM). When it is full, audio stays in the ring buffer
+  (backpressure). If the backlog makes no progress for 10 s, the client
+  is disconnected so a stalled client cannot hold the single slot.
+- The recorder rejects frames whose length prefix is outside
+  29..16384 bytes before allocating.
 - Markers pressed with no client connected are dropped with a warning
   (still logged on-device).
 

@@ -41,6 +41,9 @@ static const size_t TAG_SIZE = 16;
 static const size_t RING_BUFFER_SIZE = 65536;
 static const uint32_t HANDSHAKE_TIMEOUT_MS = 5000;
 static const uint32_t STATS_INTERVAL_MS = 5000;
+// A client whose TX backlog makes no progress for this long is disconnected, so a
+// stalled (or malicious) authenticated client cannot hold the single slot forever.
+static const uint32_t STALL_TIMEOUT_MS = 10000;
 // Max audio payload bytes per encrypted frame. Divisible by 2, 3 and 4 so frames of
 // 16/24/32-bit mono PCM are never split (~56 ms at 48 kHz / 24-bit).
 static const size_t MAX_AUDIO_PAYLOAD = 8064;
@@ -351,6 +354,7 @@ void AudioCaptureComponent::poll_handshake_() {
     this->mic_source_->start();
   }
   this->session_ = SessionState::STREAMING;
+  this->last_tx_progress_ms_ = millis();
   this->accepting_audio_.store(true, std::memory_order_release);
   this->last_stats_ms_ = millis();
   ESP_LOGI(TAG, "Handshake OK, streaming %" PRIu32 " Hz / %u-bit / %u ch", this->stream_sample_rate_,
@@ -366,6 +370,7 @@ bool AudioCaptureComponent::flush_tx_() {
                                      this->tx_pending_.size() - this->tx_pending_off_);
     if (n > 0) {
       this->tx_pending_off_ += (size_t) n;
+      this->last_tx_progress_ms_ = millis();
       continue;
     }
     if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
@@ -380,6 +385,7 @@ bool AudioCaptureComponent::flush_tx_() {
   }
   this->tx_pending_.clear();
   this->tx_pending_off_ = 0;
+  this->last_tx_progress_ms_ = millis();
   return true;
 }
 
@@ -581,6 +587,11 @@ void AudioCaptureComponent::poll_stream_() {
   }
   if (!this->flush_tx_()) {
     ESP_LOGW(TAG, "Client write failed; closing");
+    this->close_client_();
+    return;
+  }
+  if (!this->tx_pending_.empty() && millis() - this->last_tx_progress_ms_ > STALL_TIMEOUT_MS) {
+    ESP_LOGW(TAG, "Client stalled for %" PRIu32 " ms; closing", STALL_TIMEOUT_MS);
     this->close_client_();
     return;
   }
