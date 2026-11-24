@@ -220,6 +220,7 @@ class ContinuousRecorder:
             "dropped_bytes": self.dropped,
             "markers": self.markers,
             "gaps_zero_filled": self.gaps,
+            "last_device_stats": getattr(self, "device_stats", None),
             "complete": final,
         }
         with open(os.path.join(self.out_dir, self.fname_base + ".json"), "w") as f:
@@ -415,6 +416,7 @@ def run_record(host: str, port: int, psk: bytes, out_dir: str, mode: str,
                     elif ftype == proto.FRAME_STATS:
                         st = json.loads(payload.decode("utf-8"))
                         rec.stats(int(st.get("dropped_bytes", 0)))
+                        rec.device_stats = st
                     elif ftype == proto.FRAME_HEADER:
                         pass
                     else:

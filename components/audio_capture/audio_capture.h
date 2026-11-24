@@ -38,6 +38,7 @@ class AudioCaptureComponent : public Component {
 
   void set_microphone_source(microphone::MicrophoneSource *source) { this->mic_source_ = source; }
   void set_port(uint16_t port) { this->port_ = port; }
+  void set_buffer_size(size_t size) { this->buffer_size_ = size; }
   void set_psk(const std::string &psk) { this->psk_ = psk; }
 
   /// Runtime enable/disable. When disabled, the server socket is closed, any
@@ -83,6 +84,7 @@ class AudioCaptureComponent : public Component {
 
   microphone::MicrophoneSource *mic_source_{nullptr};
   uint16_t port_{6060};
+  size_t buffer_size_{65536};
   std::string psk_;
   bool enabled_{false};  // default OFF; the switch platform applies restore mode
 

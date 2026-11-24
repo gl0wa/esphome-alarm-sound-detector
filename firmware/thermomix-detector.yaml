@@ -40,6 +40,8 @@ debug:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  # Mains-powered: disable modem sleep to avoid latency spikes / audio gaps.
+  power_save_mode: none
   ap:
     ssid: "Thermomix-Detector Fallback"
     password: !secret fallback_ap_password

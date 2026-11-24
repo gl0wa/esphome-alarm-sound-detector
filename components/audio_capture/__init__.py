@@ -33,6 +33,7 @@ CONFIG_SCHEMA = cv.Schema(
             max_channels=1,
         ),
         cv.Optional(CONF_PORT, default=6060): cv.port,
+        cv.Optional("buffer_size", default=65536): cv.int_range(min=16384, max=262144),
         cv.Required(CONF_PSK): cv.All(cv.string, cv.Length(min=16)),
     }
 ).extend(cv.COMPONENT_SCHEMA)
@@ -56,6 +57,7 @@ async def to_code(config: ConfigType) -> None:
     )
     cg.add(var.set_microphone_source(mic_source))
     cg.add(var.set_port(config[CONF_PORT]))
+    cg.add(var.set_buffer_size(config["buffer_size"]))
     cg.add(var.set_psk(config[CONF_PSK]))
 
     socket.consume_sockets(1, "audio_capture")(config)

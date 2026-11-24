@@ -38,7 +38,6 @@ static const size_t NONCE_SIZE = 16;  // nonce_s / nonce_c length
 static const size_t IV_SIZE = 12;     // 4-byte BE direction 0x00000001 + u64 LE counter
 static const size_t KEY_SIZE = 32;
 static const size_t TAG_SIZE = 16;
-static const size_t RING_BUFFER_SIZE = 65536;
 static const uint32_t HANDSHAKE_TIMEOUT_MS = 5000;
 static const uint32_t STATS_INTERVAL_MS = 5000;
 // A client whose TX backlog makes no progress for this long is disconnected, so a
@@ -97,9 +96,9 @@ void AudioCaptureComponent::setup() {
     return;
   }
   this->ring_buffer_ =
-      ring_buffer::RingBuffer::create(RING_BUFFER_SIZE, ring_buffer::RingBuffer::MemoryPreference::INTERNAL_FIRST);
+      ring_buffer::RingBuffer::create(this->buffer_size_, ring_buffer::RingBuffer::MemoryPreference::INTERNAL_FIRST);
   if (this->ring_buffer_ == nullptr) {
-    ESP_LOGE(TAG, "Failed to allocate %u byte ring buffer; capture disabled", (unsigned) RING_BUFFER_SIZE);
+    ESP_LOGE(TAG, "Failed to allocate %u byte ring buffer; capture disabled", (unsigned) this->buffer_size_);
     this->mark_failed();
     return;
   }
