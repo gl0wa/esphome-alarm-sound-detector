@@ -1,9 +1,9 @@
 // Step 3 logic without DOM: template build, band / threshold suggestions,
 // example times for the period estimate (unit-tested in tests/pipeline.test.ts).
-import { FPS, SR as SR_HZ } from "./const";
+import { FPS, SR as SR_HZ, bandFromHz } from "./const";
 import { getFeatures, runDetector } from "./dsp";
 import { State } from "./store";
-import { buildTemplate, exampleFrameRange, nearLevel, suggestBand, suggestThresholds } from "./template";
+import { buildTemplate, estimatePeriod, exampleFrameRange, nearLevel, suggestBand, suggestThresholds } from "./template";
 
 export const pendingCount = (s: State) => s.candidates.filter((c) => c.status === "pending").length;
 export const r2 = (v: number) => Math.round(v * 100) / 100;
@@ -141,4 +141,68 @@ export function soundLengthFor(s: State, ex: { recId: string; t0: number; t1: nu
   let len = measureSoundLength(rec.pcm, ex.t0, ex.t1);
   if (len !== null && s.repeating && s.params.period_s) len = Math.min(len, Math.round(0.9 * s.params.period_s * 20) / 20);
   return len;
+}
+
+/** Longest run of examples in one recording spaced ~1–2 periods apart. */
+export function longestChain(s: State, period: number, tol: number): number {
+  let best = 0;
+  for (const g of timesPerRecording(s)) {
+    const t = [...g].sort((a, b) => a - b);
+    let run = t.length ? 1 : 0;
+    best = Math.max(best, run);
+    for (let i = 1; i < t.length; i++) {
+      const d = t[i] - t[i - 1], k = Math.round(d / period);
+      run = (k === 1 || k === 2) && Math.abs(d - k * period) <= tol * k ? run + k : 1;
+      best = Math.max(best, run);
+    }
+  }
+  return best;
+}
+
+export interface TuneResult {
+  bandText: string;
+  periodText: string;
+  margin: number;
+  verdict: "good" | "fair" | "bad";
+}
+
+/**
+ * One-click tuning: frequency band, repetition pattern and timing, template and
+ * thresholds, in that order (each step uses the previous one's result).
+ */
+export function autoTune(s: State): TuneResult {
+  if (!s.examples.length) throw new Error("mark at least one example first");
+  const band = bandSuggestion(s);
+  s.band = bandFromHz(band.loHz, band.hiHz);
+  const per = estimatePeriod(timesPerRecording(s));
+  if (per.period !== null) {
+    const P = per.period;
+    s.repeating = true;
+    s.params.period_s = P;
+    s.params.period_tolerance_s = Math.round(Math.min(0.25, Math.max(0.1, 0.1 * P)) * 100) / 100;
+    s.params.refractory_s = Math.min(1.5, Math.round(0.6 * P * 10) / 10);
+    s.params.release_s = Math.round((2 * P + 1) * 1000) / 1000;
+    s.duration = Math.min(s.duration, Math.round(0.9 * P * 20) / 20);
+    // Fast beeps: ask for 3 matches (if the alarm is long enough), otherwise 2.
+    const chain = longestChain(s, P, s.params.period_tolerance_s);
+    s.params.min_repetitions = P < 2 && chain >= 5 ? 3 : 2;
+  } else {
+    s.repeating = false;
+    s.params.period_s = null;
+    s.params.min_repetitions = 1;
+    s.params.refractory_s = Math.max(1, Math.round((s.duration + 0.5) * 10) / 10);
+    s.params.release_s = Math.max(3, Math.round((2 * s.duration + 2) * 10) / 10);
+  }
+  doBuild(s);
+  const t = thresholdSuggestion(s);
+  s.params.threshold = t.threshold;
+  s.params.near_threshold = t.near;
+  s.margin = { minPos: t.minPos, maxNeg: t.maxNeg, margin: t.margin };
+  s.evals = [];
+  return {
+    bandText: band.text,
+    periodText: per.text,
+    margin: t.margin,
+    verdict: t.margin >= 0.2 ? "good" : t.margin >= 0.1 ? "fair" : "bad",
+  };
 }

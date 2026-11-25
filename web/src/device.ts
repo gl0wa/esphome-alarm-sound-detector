@@ -320,3 +320,14 @@ export function buildDeviceYaml(dev: DeviceSettings, presets: YamlPreset[], reco
 export function presetDocToYaml(doc: Record<string, unknown>, indent: string): string[] {
   return yamlVal(doc, indent);
 }
+
+/** How the user records: with the device (temporary recording firmware) or with
+ *  a phone/laptop/audio files (the device steps are hidden). */
+export type CreateRoute = "device" | "file";
+const ROUTE_KEY = "asd-studio-route-v1";
+export function getRoute(): CreateRoute {
+  try { return localStorage.getItem(ROUTE_KEY) === "file" ? "file" : "device"; } catch { return "device"; }
+}
+export function setRoute(r: CreateRoute) {
+  try { localStorage.setItem(ROUTE_KEY, r); } catch { /* ignore */ }
+}

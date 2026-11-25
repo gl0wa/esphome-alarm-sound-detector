@@ -89,6 +89,26 @@ export function buildPresetDoc(
   };
 }
 
+/**
+ * Preset for the user's own device: always schema-valid, with neutral fallbacks
+ * for the details that only sharing needs (manufacturer, model, validation…).
+ */
+export function personalPresetDoc(
+  meta: PresetMeta, tmpl: BuiltTemplate, band: Band, params: DetParams, nExamples: number,
+): Record<string, unknown> {
+  const name = meta.name || "My appliance";
+  const id = (meta.id || `${name}_alarm`).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "my_appliance_alarm";
+  return buildPresetDoc({
+    ...meta,
+    id,
+    name,
+    manufacturer: meta.manufacturer || "unknown",
+    model: meta.model || "unknown",
+    sound: meta.sound || "alarm",
+    validation: meta.validation || "personal preset, not reviewed",
+  }, tmpl, band, params, nExamples);
+}
+
 export function buildYamlSnippet(presetId: string, fileName: string): string {
   return `# ${fileName} goes next to your ESPHome YAML file.
 external_components:

@@ -20,7 +20,7 @@ export const HELP: Record<string, HelpEntry> = {
   },
   threshold: {
     anchor: "threshold",
-    text: "Match score (0–1) needed to count a repetition. Higher = fewer false alarms but more misses. Use “Suggest thresholds” to place it between your examples and the loudest background.",
+    text: "Match score (0–1) needed to count a repetition. Higher = fewer false alarms but more misses. “Tune automatically” places it between your examples and the most similar other sound.",
   },
   near_threshold: {
     anchor: "near-threshold",
@@ -40,7 +40,7 @@ export const HELP: Record<string, HelpEntry> = {
   },
   refractory: {
     anchor: "refractory",
-    text: "After a repetition is counted, ignore new matches for this long, so one sound is not counted twice. Keep it shorter than the period (for beeps 1 s apart about 0.6 s); “Estimate repetition” sets it for you.",
+    text: "After a repetition is counted, ignore new matches for this long, so one sound is not counted twice. Keep it shorter than the period (for beeps 1 s apart about 0.6 s); “Tune automatically” sets it for you.",
   },
   release: {
     anchor: "release",

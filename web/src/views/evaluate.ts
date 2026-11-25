@@ -12,25 +12,29 @@ const BASE = import.meta.env.BASE_URL;
 
 export function renderEvaluate(root: HTMLElement, s: State, refresh: () => void) {
   root.innerHTML = "";
-  h("h2", "", root, "4 · Evaluate");
-  note(root, "Runs the actual firmware detector (WebAssembly) over every recording with your candidate preset. " +
-    "Green dots are detected repetitions, amber are near misses, red lines are alarm on/off. " +
-    "Check that every accepted example is caught and nothing else triggers the alarm.");
-
   if (!s.template) {
-    note(root, "Build a template in step 3 first.");
+    note(root, "Build the detector in the previous step first.");
     return;
   }
+  // Run automatically whenever there is nothing to show yet.
+  if (!s.evals.length) {
+    try { s.evals = evaluateAll(s, s.template.q, s.template.frames, s.template.bins, s.band, s.params, false); }
+    catch (e) { note(root, `Test failed: ${e}`); return; }
+  }
+  const verdictBox = h("div", "verdict", root);
+  note(root, "The device's own detector ran over your recordings with the new preset. On each timeline: green bars = your " +
+    "examples, green dots = recognised, amber = close but not enough, red line = alarm on, grey line = alarm off. Tap a timeline to listen there.");
   const row = h("div", "row", root);
-  button(row, "Run evaluation", () => {
+  button(row, "Run again", () => {
     try {
       s.evals = evaluateAll(s, s.template!.q, s.template!.frames, s.template!.bins, s.band, s.params, false);
       refresh();
-    } catch (e) { alert(`Evaluation failed: ${e}`); }
+    } catch (e) { alert(`Test failed: ${e}`); }
   });
-  // confuser preset check
-  const cRow = h("div", "row", root);
-  h("span", "muted", cRow, "Cross-check a bundled preset against these recordings:");
+  const more = h("details", "", root);
+  h("summary", "", more, "Also check: would a ready-made preset react to these recordings?");
+  const cRow = h("div", "row", more);
+  h("span", "muted", cRow, "Preset:");
   const sel = h("select", "", cRow) as HTMLSelectElement;
   const idx = ((renderEvaluate as { idx?: { id: string; name: string }[] }).idx ?? []);
   const cur = (renderEvaluate as { cur?: string }).cur ?? "";
@@ -42,7 +46,7 @@ export function renderEvaluate(root: HTMLElement, s: State, refresh: () => void)
   }
   sel.value = cur;
   sel.onchange = () => { (renderEvaluate as { cur?: string }).cur = sel.value; };
-  button(cRow, "Run confuser check", async () => {
+  button(cRow, "Check", async () => {
     if (!sel.value) return;
     try {
       const doc = await loadBundledPreset(BASE, sel.value);
@@ -57,11 +61,8 @@ export function renderEvaluate(root: HTMLElement, s: State, refresh: () => void)
   });
   void loadIndexOnce();
 
-  if (!s.evals.length) {
-    note(root, "Not evaluated yet.");
-    return;
-  }
   const W = s.template.frames;
+  let totExp = 0, totMissed = 0, totFalse = 0, totAlarms = 0, totUnreviewed = 0;
   for (const ev of s.evals) {
     const rec = s.recordings.find((r) => r.id === ev.recId)!;
     h("h3", "", root, rec.name);
@@ -89,12 +90,16 @@ export function renderEvaluate(root: HTMLElement, s: State, refresh: () => void)
     const legit = [...spans.map((sp) => sp.t1), ...unreviewed];
     const faAlarms = ev.events.filter((e) => e.type === "alarm_on" &&
       !legit.some((t) => e.t >= t - W / FPS - 1 && e.t <= t + 8));
+    const alarms = ev.events.filter((e) => e.type === "alarm_on").length;
+    totExp += expected.length; totMissed += missed.length; totFalse += faUnits.length + faAlarms.length;
+    totAlarms += alarms - faAlarms.length; totUnreviewed += onUnreviewed.length;
     const line = h("p", missed.length || faUnits.length || faAlarms.length ? "warn" : "ok", root);
+    const near = ev.events.filter((e) => e.type === "near").length;
     const parts = [
-      `${expected.length - missed.length}/${expected.length} examples caught`,
-      ...(onUnreviewed.length ? [`${onUnreviewed.length} on unreviewed candidates (review them in step 2)`] : []),
-      `near misses: ${ev.events.filter((e) => e.type === "near").length}`,
-      `max background score: ${ev.maxNeg.toFixed(2)}`,
+      `${expected.length - missed.length} of ${expected.length} examples recognised`,
+      `alarm turned on ${alarms}×`,
+      ...(onUnreviewed.length ? [`${onUnreviewed.length} on unreviewed matches`] : []),
+      ...(near ? [`${near} near miss${near > 1 ? "es" : ""}`] : []),
     ];
     line.textContent = parts.join(" · ");
     if (missed.length) {
@@ -104,12 +109,22 @@ export function renderEvaluate(root: HTMLElement, s: State, refresh: () => void)
       }
     }
     if (faUnits.length || faAlarms.length) {
-      const m = h("p", "warn", root, `False: ${faUnits.length} stray repetition(s), ${faAlarms.length} false alarm(s): `);
+      const m = h("p", "warn", root, `Reacted to something else: ${faUnits.length} stray match(es), ${faAlarms.length} false alarm(s) — listen: `);
       for (const u of [...faUnits, ...faAlarms]) {
         button(m, `play ${fmtT(u.t)}`, () => player.play(rec, Math.max(0, u.t - 1.5)));
       }
     }
   }
+  const ok = !totMissed && !totFalse;
+  verdictBox.classList.add(totFalse ? "bad" : totMissed ? "fair" : "good");
+  h("strong", "", verdictBox, ok ? "✓ Every example recognised, no false alarms"
+    : totFalse ? `⚠ ${totFalse} false reaction(s) to other sounds` : `${totMissed} of ${totExp} examples missed`);
+  h("span", "", verdictBox, ok
+    ? `The alarm turned on ${totAlarms}× across your recordings. Continue to Install.`
+    : totFalse
+      ? "Listen to the marked places below. If it is really your alarm, accept it in “Find more examples”; otherwise raise the threshold slightly (Build → Fine-tune) or add more examples."
+      : "Missing a few single examples is fine as long as the alarm itself turns on. Otherwise lower the threshold slightly (Build → Fine-tune).");
+  if (totUnreviewed) h("p", "", verdictBox, `${totUnreviewed} reaction(s) were on matches you haven't reviewed yet.`);
 }
 
 async function loadIndexOnce() {

@@ -6,7 +6,7 @@ import { findSimilar } from "../src/similar";
 import { freshState } from "../src/store";
 import { estimatePeriod, nearLevel, suggestBand } from "../src/template";
 import { wasmReady } from "./helpers";
-import { measureSoundLength } from "../src/pipeline";
+import { autoTune, measureSoundLength } from "../src/pipeline";
 
 const SR = 16000;
 
@@ -116,5 +116,26 @@ describe("measureSoundLength", () => {
   it("returns null when nothing stands out", async () => {
     await wasmReady();
     expect(measureSoundLength(beeps([], 0.5, 8), 5, 5.6)).toBeNull();
+  });
+});
+
+describe("autoTune", () => {
+  it("tunes fast beeps end to end: band, 1 s rhythm, 3 matches, clear margin", async () => {
+    await wasmReady();
+    const starts = [3, 4, 5, 6, 7, 20, 21, 22, 23, 24];
+    const s = freshState();
+    s.recordings = [{ id: "r1", name: "beeps", pcm: beeps(starts, 0.55, 30) }];
+    s.duration = 0.65;
+    s.examples = starts.map((t, i) => ({ id: `e${i}`, recId: "r1", t0: t - 0.05, t1: t + 0.6 }));
+    const r = autoTune(s);
+    expect(s.repeating).toBe(true);
+    expect(s.params.period_s).toBeCloseTo(1.0, 1);
+    expect(s.params.refractory_s).toBeLessThan(s.params.period_s!);
+    expect(s.params.min_repetitions).toBe(3);
+    expect(s.band.loHz).toBeLessThan(4000);
+    expect(s.band.hiHz).toBeGreaterThan(4000);
+    expect(r.margin).toBeGreaterThan(0.2);
+    expect(r.verdict).toBe("good");
+    expect(s.params.near_threshold).toBeLessThan(s.params.threshold);
   });
 });

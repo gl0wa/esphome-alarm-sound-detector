@@ -24,7 +24,7 @@ Choose the range where your sound is clearly louder than the background:
 - Look at the spectrogram: the sound's bright horizontal lines (tones) should
   sit inside the band; areas full of background noise (low rumble, extractor
   hood hiss) should preferably be outside.
-- “Suggest from examples” in step 3 picks the range where your examples stand
+- “Tune automatically” (Build step) picks the range where your examples stand
   out most from the background of the same recording.
 - Narrower is usually more robust (less background gets in), but keep all the
   main tones of the sound inside. Not too narrow, though: for a single-pitch beep
@@ -48,7 +48,7 @@ characteristic part of the sound with little silence around it:
   (about 1 KB per 0.1 s at the default band).
 - The studio measures it from your first example (the loudest moment of the
   selection, extended while the sound stays well above the background); press
-  “Measure” in step 2 to measure again from the seed.
+  “Measure from the example” (Find more examples → Search settings) to measure again.
 - For a repeating alarm use one repetition, not the whole sequence — e.g. one
   beep of a 5-beep alarm (see [what to mark as one example](preset_authoring.md#what-to-mark-as-one-example)).
 
@@ -68,7 +68,7 @@ melody or beep, use single mode with *minimum repetitions* 1.
 Match score needed to count a repetition. Raising it reduces false alarms but
 may miss quieter or partly masked alarms; lowering it does the opposite.
 
-Use **Suggest thresholds** in step 3: it scores your accepted examples and
+**Tune automatically** (Build step) scores your accepted examples and
 everything else in your recordings and places the threshold halfway between the
 weakest example and the loudest non-example. The difference between the two is
 the **margin**; aim for at least +0.10, ideally more than +0.2. A small margin
@@ -78,7 +78,7 @@ narrow the band or adjust the sound length.
 ## Near threshold
 
 `near_threshold`, default 0.35. Must be lower than the threshold.
-“Suggest thresholds” puts it just above the loudest background, but never more
+“Tune automatically” puts it just above the loudest background, but never more
 than 0.2 below the threshold.
 
 Peaks between this level and the threshold are reported as **near misses**
@@ -100,7 +100,7 @@ faster, but every false match becomes a false alarm.
 `period_s`, seconds; empty/`null` for single sounds.
 
 Time from the start of one repetition to the start of the next (TM6: 3.125 s).
-“Estimate repetition” in step 3 reads it from the spacing of your examples in one
+“Tune automatically” reads it from the spacing of your examples in one
 recording. For repeating alarms, repetitions only chain into an alarm when they
 arrive about one (or, if one was missed, two) periods apart.
 
@@ -120,7 +120,7 @@ After a repetition is counted, new matches are ignored for this long so that one
 sound (whose score can peak several times) is not counted twice. Keep it longer
 than the sound itself but shorter than the period — for fast beeps (e.g. one per
 second) the default is too long and would skip every other beep. “Estimate
-repetition” sets it to 0.6 × period (at most 1.5 s).
+repetition” / “Tune automatically” set it to 0.6 × period (at most 1.5 s).
 
 ## Release
 
@@ -133,7 +133,7 @@ repetitions); 2 × period + 1 s also tolerates one missed repetition.
 
 ## Accepting candidates
 
-In step 2, “Find similar” lists places that resemble your seed example. Each
+In the “Find more examples” step, “Find similar” lists places that resemble your example. Each
 candidate box is exactly one *sound length* long, positioned where the match is
 best:
 
@@ -142,11 +142,11 @@ best:
 - **Reject** if it is a different sound, or only a fragment of yours (e.g. the
   box catches the end of one repetition and the start of the next).
 - If your sound fills only a small part of every box, the sound length is too
-  long — reduce it in step 3 and run “Find similar” again.
+  long — reduce it under Search settings and run “Find similar” again.
 - Decisions can be changed at any time (“Undo”, “Accept instead”,
   “Reject instead”). Running “Find similar” again (e.g. after changing the sound
   length) keeps your accepted examples and shows them as accepted.
-- The background used by “Suggest thresholds” leaves out everything within one
+- The background used for the threshold leaves out everything within one
   sound length or the refractory time (at least 1 s) of an example, so the
   parts of the same alarm around it don't count as background.
 

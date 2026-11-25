@@ -13,11 +13,12 @@ export function renderUsePreset(
 ) {
   root.innerHTML = "";
   h("h2", "", root, "Use a ready-made preset");
-  note(root, "Pick your appliance below. The generated firmware keeps all sound on the device — " +
-    "nothing is ever sent anywhere.");
+  h("p", "instruction", root, "1. Tick your appliance(s) — one device can listen for several. " +
+    "2. Check the device settings. 3. Copy the YAML into ESPHome. Sound never leaves the device.");
 
   const st = (renderUsePreset as { sel?: string[] }).sel ?? [];
   const listBox = h("div", "list", root);
+  const cardBox = h("div", "", root);
   const yamlBox = h("div", "", root);
 
   void loadIndex();
@@ -47,7 +48,7 @@ export function renderUsePreset(
     drawYaml();
   }
 
-  renderDeviceCard(root, dev, () => drawYaml());
+  renderDeviceCard(cardBox, dev, () => drawYaml());
 
   const yamlPre = h("pre", "snippet", yamlBox);
   const row = h("div", "row", yamlBox);
@@ -70,10 +71,10 @@ export function renderUsePreset(
 
   h("h3", "", yamlBox, "Install in the ESPHome dashboard");
   const ol = h("ol", "steps-list", yamlBox);
-  h("li", "", ol, "New device → paste the YAML above into the ESPHome dashboard.");
-  h("li", "", ol, "Add wifi_ssid / wifi_password to ESPHome secrets if they are not there yet.");
-  h("li", "", ol, "Install. The first install is over USB; later updates work over Wi-Fi.");
-  h("li", "", ol, "Check the new binary sensor in Home Assistant and test with the real appliance sound.");
+  h("li", "", ol, "In the ESPHome dashboard: New device → paste this YAML.");
+  h("li", "", ol, "Make sure ESPHome's secrets contain wifi_ssid and wifi_password.");
+  h("li", "", ol, "Install (the first install is over USB, later ones over Wi-Fi).");
+  h("li", "", ol, "Add the device in Home Assistant and test it with the real appliance sound.");
 
   button(row, "Copy YAML", async () => {
     try { await navigator.clipboard.writeText(yamlPre.textContent ?? ""); msg.textContent = "Copied."; }

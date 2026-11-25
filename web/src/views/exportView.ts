@@ -1,9 +1,9 @@
 // Step 5: export the preset (JSON + YAML + labels), session save/restore.
-import { buildPresetDoc, PresetMeta, validatePreset } from "../preset";
+import { buildPresetDoc, personalPresetDoc, PresetMeta, validatePreset } from "../preset";
 import { button, download, field, h, note, textArea } from "../helpers";
 import { clearSession, State, storageUsed } from "../store";
 import { REPO_URL } from "../help";
-import { DeviceSettings, YamlPreset, buildDeviceYaml, loadDeviceSettings, safeId } from "../device";
+import { DeviceSettings, buildDeviceYaml, getRoute, loadDeviceSettings, safeId } from "../device";
 import { renderDeviceCard } from "./deviceCard";
 
 type ExportTab = "install" | "github";
@@ -12,19 +12,26 @@ let tab: ExportTab = "install";
 export function renderExport(root: HTMLElement, s: State, refresh: () => void, devIn?: DeviceSettings) {
   const dev: DeviceSettings = devIn ?? loadDeviceSettings();
   root.innerHTML = "";
-  h("h2", "", root, "5 · Export");
-  note(root, "Only the averaged, quantised template leaves this page — never your audio. " +
-    "The JSON is validated against the preset schema before download.");
-
   if (!s.template) {
-    note(root, "Build a template in step 3 first.");
+    note(root, "Build the detector first.");
     return;
   }
-  h("h3", "", root, "Preset details");
-  const g = h("div", "grid", root);
   const m = s.meta;
+  const nameRow = h("div", "grid", root);
+  const fAppl = field(nameRow, "What is it? (used for the Home Assistant entity names)", m.name, {
+    onChange: (v) => { m.name = v.trim(); refreshYaml(); },
+  });
+  fAppl.placeholder = "e.g. Rice cooker";
+  fAppl.addEventListener("input", () => { m.name = fAppl.value.trim(); refreshYaml(); });
+  let refreshYaml = () => { /* set by the install tab */ };
+
+  // Full preset details (only needed for sharing) live in the GitHub tab.
+  const detailsBox = h("div", "", root);
+  detailsBox.remove();
+  h("h3", "", detailsBox, "Preset details");
+  const g = h("div", "grid", detailsBox);
   const fId = field(g, "preset id (snake_case)", m.id, { onChange: (v) => { m.id = v; check(); } });
-  const fName = field(g, "display name", m.name, { onChange: (v) => { m.name = v; } });
+  const fName = fAppl;
   const fMan = field(g, "manufacturer", m.manufacturer, { onChange: (v) => { m.manufacturer = v; check(); } });
   const fMod = field(g, "model", m.model, { onChange: (v) => { m.model = v; check(); } });
   const fSnd = field(g, "sound", m.sound, { onChange: (v) => { m.sound = v; check(); } });
@@ -36,15 +43,15 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void, d
   const fNotes = textArea(g, "notes", m.notes, { rows: 3, onChange: (v) => { m.notes = v; } });
   void [fName, fMan, fMod, fSnd, fDesc, fAl, fTest, fVal, fNotes];
   const ph: [HTMLInputElement | HTMLTextAreaElement, string][] = [
-    [fId, "e.g. bosch_serie6_dishwasher_end"], [fName, "e.g. Bosch Serie 6 dishwasher – end of programme"],
+    [fId, "e.g. bosch_serie6_dishwasher_end"],
     [fMan, "e.g. Bosch"], [fMod, "e.g. SMS6ECI03E"], [fSnd, "e.g. end-of-programme melody"],
     [fDesc, "What the sound is and when the appliance plays it (e.g. “three-tone melody at the end of every programme, repeats every minute until the door is opened”)"], [fAl, "optional"],
     [fTest, "e.g. speech, TM6 chime, microwave beep"], [fVal, "e.g. one household, volume high"], [fNotes, "Optional: anything a reviewer or user should know (volume setting used, microphone distance, known look-alike sounds)"],
   ];
   for (const [inp, text] of ph) inp.placeholder = text;
-  for (const inp of [fId, fName, fMan, fMod, fSnd, fDesc, fAl, fTest, fVal, fNotes]) inp.addEventListener("input", () => check());
+  for (const inp of [fId, fMan, fMod, fSnd, fDesc, fAl, fTest, fVal, fNotes]) inp.addEventListener("input", () => check());
 
-  const status = h("p", "note", root, "");
+  const status = h("p", "note", detailsBox, "");
   const meta: () => PresetMeta = () => ({
     id: fId.value.trim(), name: fName.value.trim(), manufacturer: fMan.value.trim(),
     model: fMod.value.trim(), sound: fSnd.value.trim(), description: fDesc.value.trim(),
@@ -52,19 +59,20 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void, d
     testedAgainst: fTest.value, validation: fVal.value.trim(), notes: fNotes.value.trim(),
   });
   const docOf = () => buildPresetDoc(meta(), s.template!, s.band, s.params, s.examples.length);
+  const personalDoc = () => personalPresetDoc(meta(), s.template!, s.band, s.params, s.examples.length);
   function check() {
     const v = validatePreset(docOf());
     const mm = meta();
-    const missing = ([["preset id", mm.id], ["display name", mm.name], ["manufacturer", mm.manufacturer],
+    const missing = ([["preset id", mm.id], ["name (above)", mm.name], ["manufacturer", mm.manufacturer],
       ["model", mm.model], ["sound", mm.sound], ["validation", mm.validation]] as [string, string][])
       .filter(([, val]) => !val).map(([k]) => k);
-    if (v.ok) { status.textContent = "✓ Ready: the preset is valid."; status.className = "ok"; }
+    if (v.ok) { status.textContent = "✓ Ready to share: the preset is valid."; status.className = "ok"; }
     else if (missing.length) { status.textContent = `Still needed: ${missing.join(", ")}.`; status.className = "warn"; }
     else { status.textContent = `Please fix: ${v.errors.join("; ")}`; status.className = "warn"; }
   }
   check();
 
-  const id = () => meta().id || "preset";
+  const id = () => meta().id || safeId(`${meta().name || "my_appliance"}_alarm`);
   const downloadPreset = (): boolean => {
     const doc = docOf();
     const v = validatePreset(doc);
@@ -79,7 +87,7 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void, d
     const b = button(tabs, label, () => { tab = t; renderTab(); }, "subtab");
     return b;
   };
-  const tInstall = tabBtn("install", "Install your preset");
+  const tInstall = tabBtn("install", "Install on your device");
   const tGh = tabBtn("github", "Share it on GitHub");
 
   function renderTab() {
@@ -91,27 +99,36 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void, d
   }
 
   function renderInstall() {
-    note(body, "Install this to switch back to private mode — the recording firmware should not stay installed. " +
-      "This is the NORMAL device firmware (no capture_server): sound never leaves the device.");
+    const fromDevice = getRoute() === "device";
     renderDeviceCard(body, dev, () => renderTab());
-    const doc = docOf();
-    const pid = safeId(meta().id || "my_preset");
-    const presets: YamlPreset[] = [{ id: pid, ref: null, doc, label: meta().model || meta().name || undefined }];
-    const yaml = buildDeviceYaml(dev, presets, false);
-    h("pre", "snippet", body, yaml);
+    const pre = h("pre", "snippet", body, "");
+    let yaml = "";
+    refreshYaml = () => {
+      const doc = personalDoc();
+      const label = meta().name || "My appliance";
+      yaml = buildDeviceYaml(dev, [{ id: safeId(label), ref: null, doc, label }], false);
+      pre.textContent = yaml;
+    };
+    refreshYaml();
     const row = h("div", "row", body);
     const copyMsg = h("span", "muted", row, "");
-    button(row, "Copy device YAML", async () => {
+    button(row, "Copy YAML", async () => {
       try { await navigator.clipboard.writeText(yaml); copyMsg.textContent = "Copied."; }
       catch { copyMsg.textContent = "Copy failed; select the text above instead."; }
     }, "primary");
-    button(row, "Download device YAML", () => download(`${dev.deviceName}.yaml`, yaml));
-    button(row, "Download preset JSON", () => { downloadPreset(); });
+    button(row, "Download YAML", () => download(`${dev.deviceName}.yaml`, yaml));
     const ol = h("ol", "steps-list", body);
-    h("li", "", ol, "Paste the YAML above into the ESPHome dashboard (replace the recording firmware).");
-    h("li", "", ol, "Add wifi_ssid / wifi_password to ESPHome secrets if they are not there yet.");
-    h("li", "", ol, "Install over Wi-Fi, then check the binary sensor in Home Assistant and watch the “Alarm match score” sensor for a few days.");
-    const hand = h("p", "note", body, "Maintaining your YAML by hand? Download the preset JSON, put it next to your YAML and use ");
+    h("li", "", ol, fromDevice
+      ? "In the ESPHome dashboard, replace the device's YAML with this one (this removes the recording firmware — sound stays on the device again)."
+      : "In the ESPHome dashboard: New device → paste this YAML.");
+    h("li", "", ol, "Make sure ESPHome's secrets contain wifi_ssid and wifi_password.");
+    h("li", "", ol, fromDevice ? "Install (over Wi-Fi)." : "Install (the first install is over USB, later ones over Wi-Fi).");
+    h("li", "", ol, "Add the device in Home Assistant. Test it with the real appliance and watch the match score for the first days.");
+    const hand = h("p", "note", body, "Maintaining your YAML by hand? ");
+    button(hand, "Download preset JSON", () => {
+      download(`${id()}.json`, JSON.stringify(personalDoc(), null, 1) + "\n");
+    });
+    h("span", "", hand, " and use ");
     h("code", "", hand, `template: ${id()}.json`);
     h("span", "", hand, " — see the ");
     const ex = h("a", "", hand, "example configuration") as HTMLAnchorElement;
@@ -125,8 +142,10 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void, d
   function renderGithub() {
     note(body, "Sharing adds your preset to the catalog so other owners of the same appliance can use it with one line of YAML. " +
       "Only the preset file is shared — it contains an averaged fingerprint, never audio. Never attach recordings.");
+    body.appendChild(detailsBox);
+    check();
     const ol = h("ol", "steps-list", body);
-    h("li", "", ol, "Fill in the preset details above carefully: manufacturer, model, which sound, what you tested it against " +
+    h("li", "", ol, "Fill in the preset details above: manufacturer, model, which sound, what you tested it against " +
       "(other appliances, speech, kitchen noise) and how it was validated (e.g. “one household, volume 3”).");
     const li2 = h("li", "", ol, "Download the preset file: ");
     button(li2, "Download preset JSON", () => { downloadPreset(); }, "primary");
@@ -179,10 +198,11 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void, d
   }
   renderTab();
 
-  h("h3", "", root, "Your session");
-  note(root, "Your recordings, examples and settings are saved automatically in this browser (IndexedDB) and offered " +
+  const sess = h("details", "", root);
+  h("summary", "", sess, "Your saved session");
+  note(sess, "Your recordings, examples and settings are saved automatically in this browser and offered " +
     "again when you come back. Nothing is uploaded. Clearing browser data for this site removes them.");
-  const srow = h("div", "row", root);
+  const srow = h("div", "row", sess);
   const smsg = h("span", "muted", srow, "");
   void storageUsed().then((u) => { if (u) smsg.textContent = `Browser storage used by this site: ${u}.`; });
   button(srow, "Delete saved session", async () => {

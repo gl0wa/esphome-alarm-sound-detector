@@ -1,5 +1,4 @@
 // Step 2: examples, "find similar" (provisional template + firmware NCC scan).
-import { FPS } from "../const";
 import { button, field, fmtT, h, note } from "../helpers";
 import { Candidate, State, uid } from "../store";
 import { helpIcon } from "../help";
@@ -9,83 +8,78 @@ import { soundLengthFor } from "../pipeline";
 
 export function renderExamples(root: HTMLElement, s: State, refresh: () => void) {
   root.innerHTML = "";
-  h("h2", "", root, "2 · Examples & find similar");
-  note(root, "Mark one clear occurrence of the sound, then “Find similar” scans every recording with the " +
-    "firmware detector and lists everything that resembles it. Accept the true ones, reject the rest. " +
-    "Aim for 3+ accepted examples from different episodes, plus recordings of sounds it must NOT match. " +
-    "If the alarm is several identical beeps, mark ONE beep — each beep is an example, and the rhythm is set in step 3.");
-
   if (!s.examples.length) {
-    note(root, "No examples yet — select a region on a spectrogram in step 1.");
+    note(root, "Mark one occurrence of the alarm in the previous step first.");
     return;
   }
-  const W = Math.round(s.duration * FPS);
-  const list = h("div", "list", root);
-  let seedId: string | undefined = (renderExamples as { seed?: string }).seed ?? s.examples[0]?.id;
-  for (const e of s.examples) {
-    const rec = s.recordings.find((r) => r.id === e.recId);
-    const item = h("div", "list-item", list);
-    const radio = h("input", "", item) as HTMLInputElement;
-    radio.type = "radio"; radio.name = "seed"; radio.checked = e.id === seedId;
-    radio.onchange = () => {
-      (renderExamples as { seed?: string }).seed = e.id;
-      const len = soundLengthFor(s, e);
-      if (len !== null) s.duration = len;
-      refresh();
-    };
-    h("span", "", item, `${rec?.name ?? "?"} ${fmtT(e.t0)}–${fmtT(e.t1)}${e.id === seedId ? " (seed)" : ""}`);
-    button(item, "Play", () => { if (rec) player.play(rec, e.t0, e.t1); });
-    button(item, "✕", () => {
-      s.examples = s.examples.filter((x) => x !== e);
-      for (const c of s.candidates) if (c.exampleId === e.id) { c.status = "pending"; c.exampleId = undefined; }
-      refresh();
-    });
-  }
-  seedId = (renderExamples as { seed?: string }).seed ?? s.examples[0]?.id;
-  (renderExamples as { seed?: string }).seed = seedId;
-  const seed = s.examples.find((e) => e.id === seedId) ?? s.examples[0];
+  const getSeed = () => {
+    const id = (renderExamples as { seed?: string }).seed;
+    return s.examples.find((e) => e.id === id) ?? s.examples[0];
+  };
+  const seed = getSeed();
+  (renderExamples as { seed?: string }).seed = seed.id;
+
+  const pendingN = s.candidates.filter((c) => c.status === "pending").length;
+  const instr = h("p", "instruction", root, "");
+  instr.textContent = !s.candidates.length
+    ? "Press “Find similar”: the detector searches all recordings for sounds like your example. Then listen to each match and accept the real ones."
+    : pendingN
+      ? "Listen (▶) to each match: accept it if it is your alarm, reject anything else. The highest scores are at the top."
+      : `✓ All matches reviewed — ${s.examples.length} examples. Continue to Build.`;
 
   const row = h("div", "row", root);
-  const durInp = field(row, "sound length (s)", s.duration, { type: "number", step: "0.05", help: "duration" });
-  durInp.onchange = () => { s.duration = Math.max(0.2, Math.min(5, parseFloat(durInp.value) || s.duration)); };
-  const measured = h("span", "muted", root, "");
-  const measure = () => {
-    const len = soundLengthFor(s, seed);
-    if (len === null) { measured.textContent = "Could not measure the sound length — the seed doesn't stand out from the background; set it by hand."; return false; }
-    s.duration = len; durInp.value = String(len);
-    measured.textContent = `Sound length ${len} s, measured from the seed.`;
-    return true;
-  };
-  button(row, "Measure", () => { measure(); });
-  const thrInp = h("input", "", row) as HTMLInputElement;
-  thrInp.type = "number"; thrInp.step = "0.05"; thrInp.value = "0.35";
-  thrInp.title = "candidate score floor";
-  button(row, "Find similar", () => {
+  button(row, s.candidates.length ? "Find similar again" : "Find similar", () => {
     try {
-      findSimilar(s, seed.id, parseFloat(thrInp.value) || 0.35);
+      findSimilar(s, getSeed().id, parseFloat(thrInp.value) || 0.35);
     } catch (e) { alert(`Find similar failed: ${e}`); }
     refresh();
-  });
-  button(row, "Clear candidates", () => { s.candidates = []; refresh(); });
-  note(root, "The seed region becomes a provisional template (same builder as step 3); every recording is " +
-    "then scored by the firmware detector and peaks above the floor are listed.");
+  }, s.candidates.length ? "" : "primary");
 
-  if (!s.candidates.length) {
-    note(root, "No candidates yet.");
-    return;
+  // Search settings (rarely needed).
+  const det = h("details", "", root);
+  h("summary", "", det, `Search settings — sound length ${s.duration} s`);
+  const srow = h("div", "row", det);
+  const durInp = field(srow, "sound length (s)", s.duration, { type: "number", step: "0.05", help: "duration" });
+  durInp.onchange = () => { s.duration = Math.max(0.2, Math.min(5, parseFloat(durInp.value) || s.duration)); refresh(); };
+  const measured = h("span", "muted", det, "");
+  button(srow, "Measure from the example", () => {
+    const len = soundLengthFor(s, getSeed());
+    if (len === null) { measured.textContent = "The example doesn't stand out from the background — set the length by hand."; return; }
+    s.duration = len;
+    refresh();
+  });
+  const thrInp = field(srow, "show matches scoring at least", "0.35", { type: "number", step: "0.05" });
+  note(det, "Sound length is measured automatically from your first example: one beep, chime or phrase. " +
+    "Change it if the boxes below cut the sound off or contain mostly silence, then search again.");
+  if (s.examples.length > 1) {
+    h("p", "muted", det, "Search with this example:");
+    const list = h("div", "list", det);
+    for (const e of s.examples) {
+      const rec = s.recordings.find((r) => r.id === e.recId);
+      const item = h("label", "list-item", list);
+      const radio = h("input", "", item) as HTMLInputElement;
+      radio.type = "radio"; radio.name = "seed"; radio.checked = e.id === seed.id;
+      radio.onchange = () => {
+        (renderExamples as { seed?: string }).seed = e.id;
+        const len = soundLengthFor(s, e);
+        if (len !== null) s.duration = len;
+        refresh();
+      };
+      h("span", "", item, `${rec?.name ?? "?"} ${fmtT(e.t0)}–${fmtT(e.t1)}`);
+      button(item, "▶", () => { if (rec) player.play(rec, e.t0, e.t1); });
+    }
   }
-  const pending = s.candidates.filter((c) => c.status === "pending").length;
-  const ch = h("h3", "", root, `Candidates (${pending} to review, ${s.candidates.length - pending} decided)`);
+
+  if (!s.candidates.length) return;
+
+  const ch = h("h3", "", root, `Matches (${pendingN} to review, ${s.candidates.length - pendingN} decided)`);
   helpIcon(ch, "candidates");
-  note(root, "Each candidate box is exactly one template length (step 3 “sound length”), placed where the match is best. " +
-    "Accept it if the whole characteristic sound is inside, even with some quiet around it — that is expected. " +
-    "Reject it if it is a different sound, or only a fragment of yours. If the sound fills only a small part of every box, " +
-    "lower the sound length in step 3. You can change any decision later.");
-  const cl = h("div", "list", root);
+  note(root, "Accept if the box holds the whole sound — some quiet around it is fine. Reject other sounds and fragments. " +
+    "Decisions can be changed any time.");
   const accept = (c: Candidate) => {
     c.status = "accepted";
     if (!c.exampleId || !s.examples.some((e) => e.id === c.exampleId)) {
-      const dup = s.examples.find((e) => e.recId === c.recId && Math.abs(e.t0 - c.t0) < 0.3);
+      const dup = s.examples.find((e) => e.recId === c.recId && Math.abs((e.t0 + e.t1) / 2 - (c.t0 + c.t1) / 2) < 0.3);
       if (dup) c.exampleId = dup.id;
       else {
         const id = uid();
@@ -93,14 +87,25 @@ export function renderExamples(root: HTMLElement, s: State, refresh: () => void)
         c.exampleId = id;
       }
     }
-    refresh();
   };
   const unaccept = (c: Candidate, to: "pending" | "rejected") => {
     if (c.exampleId) s.examples = s.examples.filter((e) => e.id !== c.exampleId);
     c.exampleId = undefined;
     c.status = to;
-    refresh();
   };
+  if (pendingN > 1) {
+    const bulk = h("div", "row", root);
+    button(bulk, `Accept all ${pendingN} to review`, () => {
+      for (const c of s.candidates) if (c.status === "pending") accept(c);
+      refresh();
+    });
+    button(bulk, "Reject all to review", () => {
+      for (const c of s.candidates) if (c.status === "pending") unaccept(c, "rejected");
+      refresh();
+    });
+    h("span", "muted", bulk, "— only after listening to a few");
+  }
+  const cl = h("div", "list", root);
   for (const c of s.candidates) {
     const rec = s.recordings.find((r) => r.id === c.recId);
     const item = h("div", `list-item ${c.status}`, cl);
@@ -108,16 +113,16 @@ export function renderExamples(root: HTMLElement, s: State, refresh: () => void)
     h("span", `status-badge ${c.status}`, item, c.status === "pending" ? "to review" : c.status);
     h("span", "", item, `${rec?.name ?? "?"} ${fmtT(c.t0)}–${fmtT(c.t1)}`);
     button(item, "▶ Play", () => { if (rec) player.play(rec, Math.max(0, c.t0 - 0.3), c.t1 + 0.3); });
+    const act = (f: () => void) => () => { f(); refresh(); };
     if (c.status === "pending") {
-      button(item, "Accept", () => accept(c));
-      button(item, "Reject", () => unaccept(c, "rejected"));
+      button(item, "Accept", act(() => accept(c)));
+      button(item, "Reject", act(() => unaccept(c, "rejected")));
     } else if (c.status === "accepted") {
-      button(item, "Reject instead", () => unaccept(c, "rejected"));
-      button(item, "Undo", () => unaccept(c, "pending"));
+      button(item, "Reject instead", act(() => unaccept(c, "rejected")));
+      button(item, "Undo", act(() => unaccept(c, "pending")));
     } else {
-      button(item, "Accept instead", () => accept(c));
-      button(item, "Undo", () => unaccept(c, "pending"));
+      button(item, "Accept instead", act(() => accept(c)));
+      button(item, "Undo", act(() => unaccept(c, "pending")));
     }
   }
-  void W;
 }

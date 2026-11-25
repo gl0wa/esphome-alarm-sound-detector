@@ -13,7 +13,7 @@ import {
 export function renderDeviceCard(parent: HTMLElement, dev: DeviceSettings, onChange: () => void) {
   const box = h("section", "device-card", parent);
   h("h3", "", box, "Device settings");
-  note(box, "Ask as little as possible: one name, one board. Everything else has safe defaults.");
+  note(box, "Defaults fit the reference hardware (wiring guide in the docs). Change them only if yours differs.");
 
   const g = h("div", "grid", box);
   const nameInp = field(g, "device name", dev.deviceName, {

@@ -4,20 +4,42 @@ import { button, field, fmtT, h, note } from "../helpers";
 import { State } from "../store";
 import { helpIcon } from "../help";
 import { estimatePeriod } from "../template";
-import { bandSuggestion, doBuild, pendingCount, r2, thresholdSuggestion, timesPerRecording } from "../pipeline";
+import { TuneResult, autoTune, bandSuggestion, doBuild, pendingCount, r2, thresholdSuggestion, timesPerRecording } from "../pipeline";
 
 export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
   root.innerHTML = "";
-  h("h2", "", root, "3 · Build the template");
-  note(root, "The builder averages your accepted examples (aligned ±8 frames, like tools/detector/make_template.py) " +
-    "and quantises the result. Nothing is uploaded; this all happens in the page.");
-
   if (s.examples.length < 1) {
-    note(root, "Accept at least one example in step 2 first.");
+    note(root, "Mark at least one example first.");
     return;
   }
-  const W = Math.round(s.duration * 62.5);
+  const pend = pendingCount(s);
+  if (pend) {
+    h("p", "instruction", root, `${pend} match${pend > 1 ? "es are" : " is"} still unreviewed in the previous step — ` +
+      "review them first for a reliable result (unreviewed ones are left out).");
+  }
+  const trow = h("div", "row", root);
+  const tmsg = h("span", "muted", trow, "");
+  button(trow, s.template ? "Tune again" : "Tune automatically", () => {
+    try {
+      const r = autoTune(s);
+      (renderBuild as { last?: TuneResult }).last = r;
+      refresh();
+    } catch (e) { tmsg.textContent = `Tuning failed: ${e}`; }
+  }, s.template ? "" : "primary");
+  if (!s.template) {
+    note(root, `Builds the detector from your ${s.examples.length} example${s.examples.length > 1 ? "s" : ""}: ` +
+      "which pitches to listen to, the sound's rhythm, and how close a match must be.");
+  } else {
+    renderSummary(root, s, (renderBuild as { last?: TuneResult }).last);
+  }
 
+  const root0 = root;
+  const det = h("details", "", root0) as HTMLDetailsElement;
+  det.open = !!(renderBuild as { open?: boolean }).open;
+  det.ontoggle = () => { (renderBuild as { open?: boolean }).open = det.open; };
+  root = det;
+  h("summary", "", root, "Fine-tune settings (optional)");
+  note(root, "Hover or tap ? for an explanation of each setting. After changing something, press “Rebuild” at the bottom.");
   // --- band ---
   helpIcon(h("h3", "", root, "Frequency band"), "band");
   const bandRow = h("div", "row", root);
@@ -31,14 +53,7 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
       loInp.value = String(r.loHz); hiInp.value = String(r.hiHz);
     } catch (e) { sugLabel.textContent = `Suggestion failed: ${e}`; }
   });
-  button(bandRow, "Apply band", () => {
-    try {
-      s.band = bandFromHz(parseFloat(loInp.value) || 400, parseFloat(hiInp.value) || 4500);
-      s.template = null; s.evals = [];
-      refresh();
-    } catch (e) { alert(e); }
-  });
-  note(root, `Current: ${s.band.loHz}–${s.band.hiHz} Hz (bins ${s.band.binLo}..${s.band.binHi}). Default 400–4500 Hz covers most buzzers and chimes.`);
+  note(root, `Current: ${s.band.loHz}–${s.band.hiHz} Hz. Default 400–4500 Hz covers most buzzers and chimes.`);
 
   // --- duration / mode ---
   h("h3", "", root, "Sound shape");
@@ -74,7 +89,6 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
 
   // --- detection params ---
   h("h3", "", root, "Detection");
-  note(root, "Usually you only adjust the threshold (use “Suggest thresholds”). Hover or tap ? for an explanation of each setting.");
   const p = h("div", "grid", root);
   const pThr = field(p, "threshold (match score 0–1)", r2(s.params.threshold), { type: "number", step: "0.01", help: "threshold" });
   const pNear = field(p, "near-miss level", r2(s.params.near_threshold), { type: "number", step: "0.01", help: "near_threshold" });
@@ -84,6 +98,8 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
   const pRefr = field(p, "ignore re-matches for (s)", s.params.refractory_s, { type: "number", step: "0.1", help: "refractory" });
   const pRel = field(p, "alarm off after silence (s)", s.params.release_s, { type: "number", step: "0.1", help: "release" });
   const readParams = () => {
+    const lo = parseFloat(loInp.value) || 400, hi = parseFloat(hiInp.value) || 4500;
+    if (lo !== s.band.loHz || hi !== s.band.hiHz) s.band = bandFromHz(lo, hi);
     s.duration = Math.max(0.2, Math.min(5, parseFloat(durInp.value) || 1.3));
     s.repeating = repSel.value === "rep";
     const per = parseFloat(pPer.value);
@@ -100,11 +116,15 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
 
   const msg = h("p", "note", root, "");
   const brow = h("div", "row", root);
-  button(brow, "Build template", () => {
+  button(brow, "Rebuild", () => {
     try {
       readParams();
       doBuild(s);
-      msg.textContent = `Built ${s.template!.frames} frames × ${s.template!.bins} bins from ${s.examples.length} example(s).`;
+      // Re-measure the margin for the new template; keep the user's threshold.
+      const t = thresholdSuggestion(s);
+      s.margin = { minPos: t.minPos, maxNeg: t.maxNeg, margin: t.margin };
+      s.evals = [];
+      msg.textContent = `Rebuilt from ${s.examples.length} example(s).`;
       refresh();
     } catch (e) { msg.textContent = `Build failed: ${e}`; }
   });
@@ -119,22 +139,45 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
       msg.textContent = `Suggested threshold ${r.threshold} / near ${r.near}: ` +
         `weakest example scores ${r.minPos.toFixed(2)}, loudest background ${r.maxNeg.toFixed(2)} ` +
         `(margin ${r.margin >= 0 ? "+" : ""}${r.margin.toFixed(2)}).` +
-        (pendingCount(s) ? ` ${pendingCount(s)} unreviewed candidate(s) were left out — review them in step 2 for a reliable margin.` : "");
+        (pendingCount(s) ? ` ${pendingCount(s)} unreviewed match(es) were left out.` : "");
       refresh();
     } catch (e) { msg.textContent = `Suggestion failed: ${e}`; }
   });
 
-  if (s.template) {
-    h("h3", "", root, `Template preview (${s.template.frames} × ${s.template.bins})`);
-    const cv = h("canvas", "tmpl", root) as HTMLCanvasElement;
-    drawTemplate(cv, s.tmplMean!, s.template.frames, s.template.bins);
-    if (s.margin) {
-      note(root, `Margin check: weakest example ${s.margin.minPos.toFixed(2)} vs loudest background ` +
-        `${s.margin.maxNeg.toFixed(2)} (margin ${s.margin.margin >= 0 ? "+" : ""}${s.margin.margin.toFixed(2)}). ` +
-        `Bigger is better; below +0.10 is fragile.`);
-    }
-  }
   void fmtT;
+}
+
+function renderSummary(root: HTMLElement, s: State, last?: TuneResult) {
+  const m = s.margin?.margin;
+  const verdict = m === undefined ? "fair" : m >= 0.2 ? "good" : m >= 0.1 ? "fair" : "bad";
+  const box = h("div", `verdict ${verdict}`, root);
+  const head = { good: "✓ Looks reliable", fair: "Usable, but close", bad: "⚠ Fragile" }[verdict];
+  h("strong", "", box, m === undefined ? "Built" : `${head} — margin ${m >= 0 ? "+" : ""}${m.toFixed(2)}`);
+  if (s.margin) {
+    h("span", "", box, `Your weakest example scores ${s.margin.minPos.toFixed(2)}; the most similar other sound in your recordings ` +
+      `scores ${s.margin.maxNeg.toFixed(2)}. The alarm threshold is ${r2(s.params.threshold)}.`);
+  }
+  if (verdict === "bad") {
+    h("p", "", box, "Some background sound looks almost like the alarm. Check the matches you rejected or left out, " +
+      "add another recording of the alarm, or record the confusing sound separately and test again.");
+  } else if (verdict === "fair") {
+    h("p", "", box, "It will work, but a similar sound could occasionally trigger it. More examples from another recording help.");
+  }
+  const ul = h("ul", "summary-list", root);
+  h("li", "", ul, `Listens to ${s.band.loHz}–${s.band.hiHz} Hz`);
+  h("li", "", ul, `One sound lasts ${s.duration} s`);
+  h("li", "", ul, s.repeating && s.params.period_s
+    ? `Repeats every ${s.params.period_s.toFixed(2)} s — alarm after ${s.params.min_repetitions} matches`
+    : `Single sound — alarm after ${s.params.min_repetitions} match${s.params.min_repetitions > 1 ? "es" : ""}`);
+  if (last) {
+    const d = h("p", "note", root, `${last.bandText} ${last.periodText}`);
+    void d;
+  }
+  if (s.template && s.tmplMean) {
+    const cv = h("canvas", "tmpl", root) as HTMLCanvasElement;
+    cv.title = "The learned fingerprint: time left to right, pitch bottom to top";
+    drawTemplate(cv, s.tmplMean, s.template.frames, s.template.bins);
+  }
 }
 
 function drawTemplate(cv: HTMLCanvasElement, mean: Float32Array, frames: number, bins: number) {

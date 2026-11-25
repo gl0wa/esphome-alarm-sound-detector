@@ -12,18 +12,18 @@ export interface RecCallbacks {
 
 export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) {
   root.innerHTML = "";
-  h("h2", "", root, "1 · Recordings");
-  note(root, "Load recordings of the appliance sound. Everything runs in this page — audio never leaves your device. " +
-    "Best results come from the ESP32 recorder (tools/capture); a phone or laptop mic also works but sounds " +
-    "different from the INMP441, so always re-check with device recordings before exporting.");
-  note(root, "Tip: record one long session with several alarm episodes plus everyday background sounds (speech, clatter). " +
-    "Supported: whatever your browser can play — WAV, FLAC (incl. the ESP32 recorder's 24-bit FLAC), MP3, M4A, OGG.");
-
+  const has = s.recordings.length > 0;
+  if (!has) {
+    note(root, "Best: one long recording with the alarm a few times, plus everyday background — talking, dishes, " +
+      "other appliances. The background is what teaches the detector what NOT to react to.");
+  }
   const row = h("div", "row", root);
   const file = h("input", "", row) as HTMLInputElement;
   file.type = "file";
   file.accept = "audio/*,.flac,.wav";
   file.multiple = true;
+  file.hidden = true;
+  button(row, has ? "Add audio files" : "Load audio files", () => file.click(), has ? "" : "primary");
   file.onchange = async () => {
     for (const f of Array.from(file.files ?? [])) {
       try {
@@ -37,7 +37,7 @@ export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) 
     cb.refresh();
   };
   // drag & drop
-  const drop = h("div", "drop", root, "…or drop audio files here");
+  const drop = h("div", "drop", root, "…or drop audio files here (WAV, FLAC, MP3, M4A, OGG)");
   drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
   drop.ondragleave = () => drop.classList.remove("over");
   drop.ondrop = async (e) => {
@@ -54,16 +54,15 @@ export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) 
   };
 
   // microphone
-  const micRow = h("div", "row", root);
-  const micBtn = button(micRow, "● Record from microphone", () => { void toggleMic(); });
-  const meter = h("span", "muted", micRow, "");
+  const micBtn = button(row, "● Record here", () => { void toggleMic(); });
+  const meter = h("span", "muted", row, "");
   let stopFn: (() => void) | null = null;
   async function toggleMic() {
     if (stopFn) { stopFn(); return; }
     try {
       const r = await recordFromMic((v) => { meter.textContent = `level ${"▮".repeat(Math.min(20, Math.round(v * 60)))}`; }, () => {
         stopFn = null;
-        micBtn.textContent = "● Record from microphone";
+        micBtn.textContent = "● Record here";
         meter.textContent = "";
       });
       stopFn = r.stop;
@@ -77,14 +76,14 @@ export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) 
       alert(`Microphone unavailable: ${e}`);
     }
   }
-  note(root, "Microphone recordings are handy for a first try, but a phone/laptop mic hears differently " +
-    "from the INMP441 on the device. Treat mic-made presets as drafts.");
-
-  if (!s.recordings.length) {
-    note(root, "No recordings yet.");
+  if (!has) {
+    note(root, "“Record here” uses this phone's or computer's microphone. It hears a little differently from the " +
+      "device's microphone — usually fine for beeps and chimes; check the result in the Test step.");
     return;
   }
-  h("h3", "", root, `Loaded (${s.recordings.length})`);
+  // Move the drop zone below the list once recordings exist (less prominent).
+  drop.remove();
+  h("h3", "", root, `Recordings (${s.recordings.length})`);
   const list = h("div", "list", root);
   const selId = (renderRecordings as { sel?: string }).sel ?? s.recordings[0].id;
   for (const r of s.recordings) {
@@ -104,7 +103,11 @@ export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) 
   const rec: Recording = s.recordings.find((r) => r.id === selId) ?? s.recordings[0];
   (renderRecordings as { sel?: string }).sel = rec.id;
   h("h3", "", root, `Spectrogram — ${rec.name}`);
-  note(root, "Time runs left to right, pitch bottom to top; brighter = louder. Select a sound, then mark it as an example; marked parts can be played (▶), resized by their edges, or removed (✕).");
+  const marked = s.examples.length;
+  const instr = h("p", "instruction", root, "");
+  instr.textContent = marked
+    ? `✓ ${marked} example${marked > 1 ? "s" : ""} marked. Mark more if you like, or continue — the next step finds the other occurrences for you.`
+    : "Drag across one occurrence of the alarm, then press “＋ Example”. For a sound made of several identical beeps, select just one beep.";
   const specWrap = h("div", "", root);
   const spec = new SpecView(specWrap);
   const ctl = h("div", "row", root);

@@ -5,7 +5,7 @@ import { h, note } from "./helpers";
 import { clearSession, freshState, loadSession, peekSession, saveSession, uid } from "./store";
 import { sessionStatusElement, setSessionStatus } from "./session";
 import { renderUsePreset } from "./views/usePreset";
-import { getCreateStep, renderCreate, setCreateStep } from "./views/createPreset";
+import { getCreateStep, renderCreate, setCreateStep, setRoute } from "./views/createPreset";
 import { renderHome } from "./views/home";
 import { DeviceSettings, loadDeviceSettings, loadMode, saveMode, StudioMode } from "./device";
 import { validateCaptureClips } from "./importClips";
@@ -30,11 +30,13 @@ async function boot() {
     themeBtn.setAttribute("aria-label", themeBtn.title);
   };
   themeLabel();
-  h("p", "muted", header, "Get ESPHome configuration for an appliance alarm detector — from a ready-made preset or one you teach here. Analysis runs in this page; nothing is uploaded.");
+  const intro = h("p", "muted", header, "ESPHome configuration for an appliance alarm detector — from a ready-made preset or one you teach here. Analysis runs in this page; nothing is uploaded.");
   const banner = h("div", "", app);
   const main = h("main", "", app);
   const foot = h("footer", "muted", app,
-    "Static site, no tracking, no uploads. The DSP is the firmware code (detector_core.cpp) compiled to WebAssembly.");
+    "Static site, no tracking, no uploads. The analysis is the firmware's own detector code, compiled to WebAssembly. ");
+  const src = h("a", "", foot, "Source on GitHub") as HTMLAnchorElement;
+  src.href = "https://github.com/gl0wa/esphome-alarm-sound-detector"; src.target = "_blank"; src.rel = "noopener";
 
   const statusRow = h("div", "status-row", app);
   const status = h("span", "muted", statusRow, "Loading the detector (WebAssembly)…");
@@ -49,11 +51,12 @@ async function boot() {
 
   const render = () => {
     main.innerHTML = "";
+    intro.hidden = mode !== "home";
     const wrap = h("section", "", main);
     const refresh = () => render();
     try {
       if (mode === "home") {
-        renderHome(wrap, (m, step) => { if (step !== undefined) setCreateStep(step); setMode(m); });
+        renderHome(wrap, (m, step) => { if (step !== undefined) { setCreateStep(step); setRoute(step === 0 ? "device" : "file"); } setMode(m); });
       } else if (mode === "use") {
         const back = h("div", "row", wrap);
         const b = h("button", "secondary", back, "← Home");
@@ -76,7 +79,7 @@ async function boot() {
 
   try {
     await initWasm();
-    status.textContent = `Detector ready (16 kHz, firmware DSP in WebAssembly).`;
+    status.textContent = "";
     themeBtn.onclick = () => {
       if (isLight()) delete document.documentElement.dataset.theme;
       else document.documentElement.dataset.theme = "light";
@@ -86,6 +89,7 @@ async function boot() {
     };
     render();
     setupImport(banner, () => {
+      setRoute("device");
       setCreateStep(2);
       setMode("create");
     });

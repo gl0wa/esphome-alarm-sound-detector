@@ -9,53 +9,67 @@ To try it locally: `cd web && npm install && npm run build && npm run preview`.
 
 Your work (recordings, examples, decisions, settings and the built template) is
 saved automatically in your browser and offered again when you come back; it
-never leaves your device. Delete it any time on the Export step.
+never leaves your device. Delete it any time on the Install step (“Your saved session”).
 
 The studio has two modes, picked on the home screen (click the title to go back).
 
 ## Use a ready-made preset
 
-For appliances already in the catalog (`components/alarm_sound_detector/presets/`). Pick one or more
-presets, fill in the Device settings card (one name, one board), and paste the
-generated YAML as a new device in the ESPHome dashboard:
+For appliances already in the catalog (`components/alarm_sound_detector/presets/`).
+Tick one or more appliances, check the Device settings card (defaults fit the
+reference hardware), and paste the generated YAML as a new device in the
+ESPHome dashboard:
 
 1. New device → paste the YAML.
-2. Add `wifi_ssid` / `wifi_password` to ESPHome secrets if they are not there yet.
+2. Make sure ESPHome's secrets contain `wifi_ssid` and `wifi_password`.
 3. Install — the first install is over USB, later updates work over Wi-Fi.
-4. Check the new binary sensor in Home Assistant with the real appliance sound.
+4. Add the device in Home Assistant and test it with the real appliance sound.
 
 The generated firmware keeps all sound on the device: it never sends audio anywhere.
 
 ## Create a preset for your appliance
 
-The home screen offers two ways to record. **Record with the device** starts at
-step 1 below (most accurate: the microphone that will listen later). **Record or
-load audio** (a phone, laptop or audio files; no extra firmware) starts at
-step 3. A guided stepper wraps the Record → Examples → Build → Evaluate → Export
-flow (steps 3–7), with two device-recording steps first:
+The home screen offers two ways to record:
 
-1. **Install the recording firmware.** The studio generates it from your Device
-   settings plus a `capture_server` block. It is temporary, and it is the ONLY
-   firmware that can send sound — to your browser only, only while you press
-   Record, unencrypted over your home Wi-Fi (protected by the key in the QR code).
-2. **Record with your phone.** Scan the QR code (`http://<device-name>.local/#k=…`;
-   enter the device IP address instead if your phone can't open `.local` names),
-   record the alarm several times plus everyday background sounds, then tap
-   “Send to preset studio”. The studio opens with `#import`, shows what arrived,
-   and adds each clip as a recording on import.
-3. **Record.** …or load audio files / record from a microphone instead.
-   Aim for several alarm episodes plus background (speech, clatter, other appliances).
-4. **Mark examples, find similar.** Mark one clear occurrence, “Find similar” scans
-   everything with the firmware detector; accept the true ones, reject the rest.
-5. **Build.** Every setting is explained in [preset_parameters.md](preset_parameters.md)
-   (the “?” icons link there). Use “Suggest from examples” and “Suggest thresholds”;
-   the margin (weakest example minus loudest background) should be at least +0.10.
-6. **Evaluate.** Green dots are caught repetitions, amber near misses, red alarm
-   on/off. Cross-check a bundled preset (e.g. the TM6 chime) against your recordings.
-7. **Export & install.** The first tab shows the NORMAL device YAML with your new
-   preset inline — install this to switch back to private mode; the recording
-   firmware should not stay installed. The preset JSON can also be downloaded
-   (for hand-written YAML), and the second tab walks you through sharing it on GitHub.
+- **Record with the device** (most accurate — the microphone that will listen
+  later). Two extra steps come first:
+  1. **Recording firmware.** The studio generates a temporary firmware (your
+     Device settings plus a `capture_server` block). It is the ONLY firmware
+     that can send sound — to your browser only, only while you press Record,
+     unencrypted over your home Wi-Fi (protected by the key in the QR code).
+  2. **Record on your phone.** Scan the QR code (`http://<device-name>.local/#k=…`;
+     if the phone can't open `.local` names, enter the device's IP address under
+     “Page doesn't open on the phone?”), record the alarm a few times plus
+     everyday background sounds, then tap “Send to preset studio”. The clips
+     arrive in the next step.
+- **Record with a phone or laptop** (quickest, no extra firmware): record in the
+  page or load audio files. The device steps are skipped.
+
+Then, in both cases:
+
+1. **Mark the alarm.** Drag across one occurrence on the spectrogram and press
+   “＋ Example”. The sound length is measured from it automatically.
+   Best material: one long recording with the alarm a few times plus everyday
+   background — the background teaches the detector what not to react to.
+2. **Find more examples.** “Find similar” searches all recordings for sounds like
+   your example. Listen to the matches and accept the real ones (or use
+   “Accept all” after checking a few). Search settings (sound length, minimum
+   score, which example to search with) are folded away.
+3. **Build.** “Tune automatically” picks the frequency band, the rhythm and timing,
+   builds the fingerprint and sets the threshold, then rates the result by its
+   **margin** (weakest example minus the most similar other sound): ✓ reliable
+   from +0.20, usable from +0.10, fragile below. Every setting can still be
+   changed under “Fine-tune settings”, explained in
+   [preset_parameters.md](preset_parameters.md) (the “?” icons link there).
+4. **Test.** Runs automatically: the firmware detector over every recording, with
+   a verdict (examples recognised, false alarms) and a timeline per recording —
+   green dots recognised, amber near misses, red line alarm on, grey alarm off.
+   Optionally check whether a ready-made preset would react to your recordings.
+5. **Install.** Give the appliance a name (used for the Home Assistant entities)
+   and copy the device YAML with your preset inline. If you used the recording
+   firmware, installing this switches the device back to private mode. The
+   “Share it on GitHub” tab asks for the full preset details and walks you
+   through contributing it.
 
 ### What to mark as one example
 
@@ -80,19 +94,19 @@ Why not the whole beep sequence as one example:
 For fast beeps:
 
 1. Mark one beep (a loose selection is fine). The studio measures the **sound
-   length** from the first example you mark (and again when you pick another
-   seed or press “Measure” next to “Find similar”); then run “Find similar” and
-   accept every beep.
-2. “Estimate repetition” reads the period from the spacing of your examples (it
+   length** from the first example you mark (Search settings in the next step
+   can measure it again); then run “Find similar” and accept every beep.
+2. “Tune automatically” reads the period from the spacing of your examples (it
    needs at least 3 accepted repetitions of one alarm; gaps between separate
    alarms and a single missed repetition are ignored) and
    also sets *ignore re-matches for* (refractory) to 0.6 × period. Refractory
    must be shorter than the period, otherwise every other beep is ignored.
-3. Choose **repetitions before alarm** below the number of beeps the appliance
-   plays, so a masked beep or two do not lose the alarm.
+3. **Repetitions before alarm** must stay below the number of beeps the
+   appliance plays, so a masked beep or two do not lose the alarm. Tuning picks
+   3 for fast beeps when an alarm has at least 5 of them, otherwise 2.
 4. A plain single-tone beep is less distinctive than a melody and other
    appliances' beeps may score close to it. Record those (microwave, oven timer)
-   as background and check that the margin from “Suggest thresholds” is at least
+   as background and check that the margin shown after tuning is at least
    +0.10.
 
 What NOT to share: household audio stays yours. Never attach recordings to GitHub

@@ -5,6 +5,14 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildDeviceYaml, defaultDeviceSettings } from "../src/device";
+import { personalPresetDoc, validatePreset } from "../src/preset";
+import { bandFromHz, DEFAULT_PARAMS } from "../src/const";
+
+// A preset installed without filling in any sharing details (only defaults).
+const emptyMeta = { id: "", name: "", manufacturer: "", model: "", sound: "", description: "",
+  aliases: [] as string[], testedAgainst: "", validation: "", notes: "" };
+const tmpl = { q: new Int8Array(10 * 5).map((_, i) => (i * 7) % 50 - 25), frames: 10, bins: 5 };
+const personal = personalPresetDoc(emptyMeta, tmpl, bandFromHz(3000, 3150), { ...DEFAULT_PARAMS }, 3);
 
 const tm6 = JSON.parse(readFileSync(join(__dirname, "../../components/alarm_sound_detector/presets/vorwerk_thermomix_tm6_alarm.json"), "utf8"));
 const dev = defaultDeviceSettings();
@@ -14,12 +22,18 @@ const samples: Record<string, string> = {
     { id: "second", ref: "thermomix_tm6", label: "Second appliance" },
   ], false),
   "studio-recording": buildDeviceYaml(dev, [], true),
+  "studio-personal-preset": buildDeviceYaml(dev, [
+    { id: "my_appliance", ref: null, doc: personal, label: "My appliance" },
+  ], false),
   "studio-inline-preset": buildDeviceYaml(dev, [
     { id: "my_preset", ref: null, doc: { ...tm6, id: "my_preset", aliases: [] }, label: "Rice cooker" },
   ], false),
 };
 
 describe("generated device YAML", () => {
+  it("a preset installed without sharing details is still schema-valid", () => {
+    expect(validatePreset(personal)).toEqual({ ok: true, errors: [] });
+  });
   it("has no empty component blocks and unique entity names", () => {
     for (const [name, y] of Object.entries(samples)) {
       expect(y, name).not.toMatch(/^alarm_sound_detector:\n\s*\n/m);
