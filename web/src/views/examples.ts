@@ -5,6 +5,7 @@ import { Candidate, State, uid } from "../store";
 import { helpIcon } from "../help";
 import { player } from "./recordings";
 import { findSimilar } from "../similar";
+import { soundLengthFor } from "../pipeline";
 
 export function renderExamples(root: HTMLElement, s: State, refresh: () => void) {
   root.innerHTML = "";
@@ -26,7 +27,12 @@ export function renderExamples(root: HTMLElement, s: State, refresh: () => void)
     const item = h("div", "list-item", list);
     const radio = h("input", "", item) as HTMLInputElement;
     radio.type = "radio"; radio.name = "seed"; radio.checked = e.id === seedId;
-    radio.onchange = () => { (renderExamples as { seed?: string }).seed = e.id; };
+    radio.onchange = () => {
+      (renderExamples as { seed?: string }).seed = e.id;
+      const len = soundLengthFor(s, e);
+      if (len !== null) s.duration = len;
+      refresh();
+    };
     h("span", "", item, `${rec?.name ?? "?"} ${fmtT(e.t0)}–${fmtT(e.t1)}${e.id === seedId ? " (seed)" : ""}`);
     button(item, "Play", () => { if (rec) player.play(rec, e.t0, e.t1); });
     button(item, "✕", () => {
@@ -42,6 +48,15 @@ export function renderExamples(root: HTMLElement, s: State, refresh: () => void)
   const row = h("div", "row", root);
   const durInp = field(row, "sound length (s)", s.duration, { type: "number", step: "0.05", help: "duration" });
   durInp.onchange = () => { s.duration = Math.max(0.2, Math.min(5, parseFloat(durInp.value) || s.duration)); };
+  const measured = h("span", "muted", root, "");
+  const measure = () => {
+    const len = soundLengthFor(s, seed);
+    if (len === null) { measured.textContent = "Could not measure the sound length — the seed doesn't stand out from the background; set it by hand."; return false; }
+    s.duration = len; durInp.value = String(len);
+    measured.textContent = `Sound length ${len} s, measured from the seed.`;
+    return true;
+  };
+  button(row, "Measure", () => { measure(); });
   const thrInp = h("input", "", row) as HTMLInputElement;
   thrInp.type = "number"; thrInp.step = "0.05"; thrInp.value = "0.35";
   thrInp.title = "candidate score floor";

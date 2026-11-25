@@ -3,6 +3,7 @@ import { bufferToPcm16, fileToPcm16, Player, recordFromMic } from "../audio";
 import { SR } from "../const";
 import { button, fmtT, h, note } from "../helpers";
 import { Recording, State, uid } from "../store";
+import { measureSoundLength } from "../pipeline";
 import { type Region, SpecView, type SpecViewState } from "../widgets";
 
 export interface RecCallbacks {
@@ -137,10 +138,13 @@ export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) 
   const keepView = () => { viewState.set(rec.id, spec.getView()); };
   function markSelection() {
     if (!pendingSel) return;
-    // The first marked example sets the sound length (template duration);
+    // The first marked example sets the sound length (template duration),
+    // measured from the audio (the selection length if nothing stands out);
     // it can be changed in step 2 or 3.
     if (!s.examples.length) {
-      s.duration = Math.max(0.2, Math.min(5, Math.round((pendingSel.t1 - pendingSel.t0) * 20) / 20));
+      let len: number | null = null;
+      try { len = measureSoundLength(rec.pcm, pendingSel.t0, pendingSel.t1); } catch { /* keep selection length */ }
+      s.duration = len ?? Math.max(0.2, Math.min(5, Math.round((pendingSel.t1 - pendingSel.t0) * 20) / 20));
     }
     s.examples.push({ id: uid(), recId: rec.id, t0: pendingSel.t0, t1: pendingSel.t1 });
     pendingSel = null;

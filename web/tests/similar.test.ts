@@ -6,6 +6,7 @@ import { findSimilar } from "../src/similar";
 import { freshState } from "../src/store";
 import { estimatePeriod, nearLevel, suggestBand } from "../src/template";
 import { wasmReady } from "./helpers";
+import { measureSoundLength } from "../src/pipeline";
 
 const SR = 16000;
 
@@ -99,5 +100,21 @@ describe("band and near-miss suggestions", () => {
     expect(nearLevel(0.44, 0.08)).toBe(0.24);
     expect(nearLevel(0.55, 0.45)).toBe(0.5);
     expect(nearLevel(0.5, 0.48)).toBe(0.45);
+  });
+});
+
+describe("measureSoundLength", () => {
+  it("measures one beep, also from a loose selection", async () => {
+    await wasmReady();
+    const pcm = beeps([5, 6, 7], 0.55, 10);
+    for (const [t0, t1] of [[4.95, 5.6], [4.6, 5.8]]) {
+      const len = measureSoundLength(pcm, t0, t1)!;
+      expect(len).toBeGreaterThanOrEqual(0.5);
+      expect(len).toBeLessThanOrEqual(0.75);
+    }
+  });
+  it("returns null when nothing stands out", async () => {
+    await wasmReady();
+    expect(measureSoundLength(beeps([], 0.5, 8), 5, 5.6)).toBeNull();
   });
 });

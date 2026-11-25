@@ -46,6 +46,9 @@ characteristic part of the sound with little silence around it:
 - Too long: the window contains mostly background or the gaps between
   repetitions, which dilutes the match, and the template needs more memory
   (about 1 KB per 0.1 s at the default band).
+- The studio measures it from your first example (the loudest moment of the
+  selection, extended while the sound stays well above the background); press
+  “Measure” in step 2 to measure again from the seed.
 - For a repeating alarm use one repetition, not the whole sequence — e.g. one
   beep of a 5-beep alarm (see [what to mark as one example](preset_authoring.md#what-to-mark-as-one-example)).
 

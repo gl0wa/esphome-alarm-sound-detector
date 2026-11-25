@@ -76,9 +76,10 @@ Why not the whole beep sequence as one example:
 
 For fast beeps:
 
-1. Mark one beep (centre the selection on it, a little margin is fine). The first
-   example you mark sets the **sound length** (also editable next to “Find
-   similar”); then run “Find similar” and accept every beep.
+1. Mark one beep (a loose selection is fine). The studio measures the **sound
+   length** from the first example you mark (and again when you pick another
+   seed or press “Measure” next to “Find similar”); then run “Find similar” and
+   accept every beep.
 2. “Estimate repetition” reads the period from the spacing of your examples (it
    needs at least 3 accepted repetitions of one alarm; gaps between separate
    alarms and a single missed repetition are ignored) and
