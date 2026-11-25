@@ -77,6 +77,9 @@ export function renderCreate(
     note(body, "This firmware is temporary: it is the ONLY firmware that can send sound — " +
       "to your browser only, only while you press Record, unencrypted over your home Wi-Fi " +
       "(protected by the key in the QR code on the next step). You will switch back to the private firmware at the end.");
+    const skip = h("p", "note", body, "Recording with a phone or laptop, or loading audio files instead? ");
+    const sk = h("a", "", skip, `Skip to ${CREATE_STEPS[2]} →`) as HTMLAnchorElement;
+    sk.href = "#"; sk.onclick = (e) => { e.preventDefault(); go(2); };
     renderDeviceCard(body, dev, () => renderCreate(root, s, dev, opts));
     const yaml = buildDeviceYaml(dev, [] as YamlPreset[], true);
     const pre = h("pre", "snippet", body, yaml);

@@ -30,7 +30,7 @@ async function boot() {
     themeBtn.setAttribute("aria-label", themeBtn.title);
   };
   themeLabel();
-  h("p", "muted", header, "Teach the alarm detector a new appliance sound. All processing happens on your device — audio never leaves this page.");
+  h("p", "muted", header, "Get ESPHome configuration for an appliance alarm detector — from a ready-made preset or one you teach here. Analysis runs in this page; nothing is uploaded.");
   const banner = h("div", "", app);
   const main = h("main", "", app);
   const foot = h("footer", "muted", app,
@@ -53,7 +53,7 @@ async function boot() {
     const refresh = () => render();
     try {
       if (mode === "home") {
-        renderHome(wrap, (m) => setMode(m));
+        renderHome(wrap, (m, step) => { if (step !== undefined) setCreateStep(step); setMode(m); });
       } else if (mode === "use") {
         const back = h("div", "row", wrap);
         const b = h("button", "secondary", back, "← Home");

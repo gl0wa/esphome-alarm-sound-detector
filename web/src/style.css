@@ -183,3 +183,48 @@ input[type="file"] { max-width: 100%; }
 details { margin: 8px 0; }
 summary { cursor: pointer; color: var(--muted); }
 .field select:disabled, .field input:disabled { opacity: 0.6; }
+
+/* ---- Home: route map ---- */
+.ic { display: inline-flex; width: 20px; height: 20px; flex: none; color: var(--accent); }
+.ic svg { width: 100%; height: 100%; }
+.ic.big { width: 30px; height: 30px; }
+.ic.small { width: 15px; height: 15px; color: var(--ok); }
+.how { display: flex; align-items: flex-start; justify-content: center; gap: 4px; margin: 18px 0 8px; flex-wrap: wrap; }
+.how-item { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 150px; text-align: center; font-size: 0.9rem; color: var(--muted); }
+.how-item .ic.big { width: 40px; height: 40px; padding: 8px; border-radius: 50%; border: 1px solid var(--border); background: var(--panel); box-sizing: content-box; }
+.how-item + .how-item { position: relative; }
+.how-item + .how-item::before { content: "→"; position: absolute; left: -12px; top: 18px; color: var(--muted); font-size: 1.1rem; }
+.home-q { text-align: center; margin: 22px 0 12px; font-size: 1.25rem; }
+.routes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 14px; align-items: start; }
+@media (max-width: 760px) { .routes { grid-template-columns: minmax(0, 1fr); } }
+.route { position: relative; border: 1px solid var(--border); border-radius: 14px; padding: 18px 16px 16px; background: var(--panel); }
+.route h3 { margin: 4px 0 10px; }
+.route-a { border-top: 4px solid var(--ok); }
+.route-b { border-top: 4px solid var(--accent); }
+.route-tag { position: absolute; top: -13px; left: 16px; padding: 1px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 700; color: #fff; }
+.route-a .route-tag { background: var(--ok); }
+.route-b .route-tag { background: var(--accent); }
+.route-sub { margin: 0 0 8px; color: var(--muted); font-size: 0.9rem; }
+.ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.way { border: 1px solid var(--border); border-radius: 10px; padding: 12px; background: var(--bg); display: flex; flex-direction: column; }
+.way > button { margin-top: auto; align-self: flex-start; }
+.way-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pill { font-size: 0.72rem; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); color: var(--muted); }
+.flow { list-style: none; padding: 0; margin: 10px 0; display: flex; flex-wrap: wrap; gap: 6px 4px; align-items: center; }
+.flow li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 6px; border: 1px solid var(--border);
+  border-radius: 18px; background: var(--panel); font-size: 0.85rem; white-space: nowrap; }
+.flow li + li { margin-left: 16px; position: relative; }
+.flow li + li::before { content: "→"; position: absolute; left: -16px; width: 16px; text-align: center; color: var(--muted); }
+.privacy { display: flex; gap: 6px; align-items: flex-start; font-size: 0.82rem; color: var(--muted); margin: 6px 0 10px; }
+.privacy .ic { margin-top: 2px; }
+.merge { text-align: center; color: var(--muted); font-size: 0.85rem; margin: 12px 0 0; position: relative; }
+.merge::before { content: "↓"; display: block; font-size: 1.1rem; line-height: 1; margin-bottom: 2px; }
+.route-b > .flow { justify-content: center; }
+.flow.alt li + li { margin-left: 26px; }
+.flow.alt li + li::before { content: "or"; left: -24px; width: 22px; font-size: 0.8rem; }
+@media (max-width: 600px) {
+  .how { gap: 0; flex-wrap: nowrap; }
+  .how-item { width: 33%; font-size: 0.8rem; }
+  .how-item .ic.big { width: 30px; height: 30px; padding: 7px; }
+  .how-item + .how-item::before { left: -6px; top: 14px; }
+}

@@ -53,17 +53,23 @@ That's all — this firmware never sends sound off the device.
 
 ### B. Create a preset for your appliance
 
-1. In the studio choose **Create a preset for your appliance** and install the
-   generated **recording firmware**. This is a *temporary* firmware: it is the
-   only one that can send sound, and only to your own browser, only while you
-   press Record.
-2. Scan the QR code with your phone (it contains the device address and a
-   private key, so there is nothing to type), record the alarm a few times plus
-   some everyday background sounds, and tap **Send to the preset studio**.
-3. Mark the alarm in the studio, let it find the other occurrences, build and
-   test the preset.
-4. Install the generated **normal firmware**, which now contains your preset —
-   the device is back in private mode. Optionally share the preset on GitHub.
+First record the alarm, in one of two ways:
+
+- **With the device** (most accurate: the same microphone, in the same spot,
+  that will listen later). Install the generated *temporary* **recording
+  firmware** — the only firmware that can send sound, only to your own browser,
+  only while you press Record — then scan the QR code with your phone (it
+  contains the device address and a private key, nothing to type), record the
+  alarm a few times plus everyday background sounds and tap **Send to the
+  preset studio**.
+- **With a phone or laptop** (quickest, no extra firmware): record in the studio
+  page or load audio files. A different microphone hears a little differently,
+  which is usually fine for beeps and chimes.
+
+Then mark the alarm in the studio, let it find the other occurrences, build and
+test the preset, and install the generated **normal firmware**, which contains
+your preset (if you used the recording firmware, this switches the device back
+to private mode). Optionally share the preset on GitHub.
 
 Details: [docs/preset_authoring.md](docs/preset_authoring.md).
 
