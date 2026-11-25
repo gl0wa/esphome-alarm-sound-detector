@@ -49,3 +49,6 @@ __pycache__/
 .idea/
 .vscode/
 *.swp
+
+# asd tool: device settings hold API/capture keys
+device.json

@@ -50,9 +50,9 @@ export function renderUsePreset(
 
   renderDeviceCard(cardBox, dev, () => drawYaml());
 
-  const yamlPre = h("pre", "snippet", yamlBox);
   const row = h("div", "row", yamlBox);
-  const msg = h("span", "muted", row, "");
+  const yamlPre = document.createElement("pre");
+  yamlPre.className = "snippet";
 
   function presets(): YamlPreset[] {
     const sel: string[] = (renderUsePreset as { sel?: string[] }).sel ?? [];
@@ -65,20 +65,23 @@ export function renderUsePreset(
 
   function drawYaml() {
     yamlPre.textContent = buildDeviceYaml(dev, presets(), false);
-    void msg;
   }
   drawYaml();
 
-  h("h3", "", yamlBox, "Install in the ESPHome dashboard");
   const ol = h("ol", "steps-list", yamlBox);
   h("li", "", ol, "In the ESPHome dashboard: New device → paste this YAML.");
   h("li", "", ol, "Make sure ESPHome's secrets contain wifi_ssid and wifi_password.");
   h("li", "", ol, "Install (the first install is over USB, later ones over Wi-Fi).");
   h("li", "", ol, "Add the device in Home Assistant and test it with the real appliance sound.");
+  const yd = h("details", "", yamlBox);
+  h("summary", "", yd, "Show the YAML");
+  yd.appendChild(yamlPre);
 
   button(row, "Copy YAML", async () => {
     try { await navigator.clipboard.writeText(yamlPre.textContent ?? ""); msg.textContent = "Copied."; }
-    catch { msg.textContent = "Copy failed; select the text above instead."; }
+    catch { msg.textContent = "Copy failed; open “Show the YAML” and select the text."; }
   }, "primary");
   button(row, "Download YAML", () => download(`${dev.deviceName}.yaml`, yamlPre.textContent ?? ""));
+  const msg = h("span", "muted", row, "");
+  msg.setAttribute("role", "status");
 }

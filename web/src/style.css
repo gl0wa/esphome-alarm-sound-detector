@@ -8,6 +8,8 @@
   --ok: #3ddc84;
   --warn: #ffbf3f;
   --border: #2a3350;
+  --on-accent: #06121f;   /* text on accent-coloured fills (contrast ≥ 4.5:1) */
+  --tag-a: #3ddc84; --tag-b: #4da3ff; --tag-c: #b9a2ff; --on-tag: #06121f;
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -19,6 +21,8 @@
   --ok: #0a7a3f;
   --warn: #9a6200;
   --border: #d6dce7;
+  --on-accent: #ffffff;
+  --tag-a: #0a7a3f; --tag-b: #0b62d6; --tag-c: #6d28d9; --on-tag: #ffffff;
 }
 * { box-sizing: border-box; }
 body {
@@ -65,7 +69,7 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 .step-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 28px 0 8px;
   padding-top: 14px; border-top: 1px solid var(--border); }
 .step-nav .spacer { flex: 1; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 button.primary:disabled { background: transparent; color: var(--muted); }
 .subtabs { display: flex; gap: 0; margin: 12px 0 4px; border-bottom: 1px solid var(--border); }
 .subtab { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 8px 14px; margin: 0; }
@@ -247,3 +251,25 @@ pre.snippet { max-height: 55vh; overflow: auto; }
 .agent-prompt { white-space: pre-wrap; font-size: 0.85rem; }
 .agent-links { font-size: 0.9rem; }
 .catalog { font-size: 0.88rem; margin: -4px 0 6px; }
+
+/* ---- Home v3: three routes side by side ---- */
+.routes { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+@media (max-width: 900px) { .routes { grid-template-columns: minmax(0, 1fr); } }
+.route { display: flex; flex-direction: column; padding-top: 20px; }
+.route > button.primary { margin-top: auto; align-self: flex-start; }
+.route-c { margin-top: 0; }
+.route-a { border-top-color: var(--tag-a); }
+.route-b { border-top-color: var(--tag-b); }
+.route-c { border-top-color: var(--tag-c); }
+.route-tag { color: var(--on-tag); white-space: nowrap; }
+.route-a .route-tag { background: var(--tag-a); }
+.route-b .route-tag { background: var(--tag-b); }
+.route-c .route-tag { background: var(--tag-c); }
+.route .way-head h3 { margin: 0; font-size: 1.1rem; }
+.route .way-head { margin-bottom: 6px; }
+.ways { grid-template-columns: minmax(0, 1fr); gap: 8px; margin-bottom: 4px; }
+.way { padding: 10px 12px; }
+.way .way-head { margin-bottom: 2px; }
+.way-text { margin: 2px 0 8px; font-size: 0.85rem; color: var(--muted); }
+.home-q { margin-top: 18px; }
+.route > button.primary { margin-top: 10px; }

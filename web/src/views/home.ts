@@ -32,107 +32,98 @@ function icon(parent: HTMLElement, name: string, cls = "ic"): HTMLElement {
   return span;
 }
 
-type Step = [icon: string, label: string];
-
-function flow(parent: HTMLElement, steps: Step[], alt = false) {
-  const ol = h("ol", alt ? "flow alt" : "flow", parent);
-  for (const [ic, label] of steps) {
-    const li = h("li", "", ol);
-    icon(li, ic);
-    h("span", "", li, label);
-  }
-}
-
 export function renderHome(root: HTMLElement, go: (m: "use" | "create", step?: number) => void) {
   root.innerHTML = "";
 
   // How it works, in one line of pictures.
   const how = h("div", "how", root);
-  for (const [ic, label] of [["wave", "Appliance alarm"], ["chip", "ESP32 + mic recognises it"], ["home", "Home Assistant notifies you"]] as const) {
+  for (const [ic, label] of [["wave", "Appliance plays its alarm"], ["chip", "ESP32 + mic recognises it"], ["home", "Alarm sensor turns on in Home Assistant"]] as const) {
     const d = h("div", "how-item", how);
     icon(d, ic, "ic big");
     h("span", "", d, label);
   }
 
-  h("h2", "home-q", root, "Is your appliance in the catalog?");
+  h("h2", "home-q", root, "How do you want to set it up?");
   const routes = h("div", "routes", root);
 
   // --- A: ready-made preset ---
-  const a = h("div", "route route-a", routes);
-  h("div", "route-tag", a, "Yes");
-  h("h3", "", a, "Use a ready-made preset");
-  const cat = h("div", "catalog", a);
-  h("span", "muted", cat, "In the catalog: ");
+  const a = h("section", "route route-a", routes);
+  h("div", "route-tag", a, "Appliance in the catalog");
+  const ah = h("div", "way-head", a);
+  icon(ah, "list", "ic big");
+  h("h3", "", ah, "Use a ready-made preset");
+  const cat = h("p", "catalog", a);
+  h("span", "muted", cat, "Catalog: ");
   const catList = h("span", "", cat, "…");
   void loadBundledIndex(import.meta.env.BASE_URL).then((idx) => {
     catList.textContent = idx.length ? idx.map((p) => p.name).join(" · ") : "could not load the list";
   }).catch(() => { catList.textContent = "could not load the list"; });
-  flow(a, [["list", "Pick appliance"], ["code", "Copy YAML"], ["flash", "Install"], ["bell", "Done"]]);
+  h("p", "route-sub", a, "Pick it, copy the generated YAML into ESPHome, install.");
   privacy(a, "Sound never leaves the device.");
   button(a, "Browse presets", () => go("use"));
 
   // --- B: create a preset (two ways to record) ---
-  const b = h("div", "route route-b", routes);
-  h("div", "route-tag", b, "No");
-  h("h3", "", b, "Create your own preset");
-  h("p", "route-sub", b, "First record the alarm — choose how:");
+  const b = h("section", "route route-b", routes);
+  h("div", "route-tag", b, "Not in the catalog");
+  const bh = h("div", "way-head", b);
+  icon(bh, "mark", "ic big");
+  h("h3", "", bh, "Create your own preset");
+  h("p", "route-sub", b, "Record the alarm, mark it, and the studio builds and tests the detector. Record with:");
   const ways = h("div", "ways", b);
-
-  const b1 = h("div", "way", ways);
-  const t1 = h("div", "way-head", b1);
-  icon(t1, "chip", "ic big");
-  h("strong", "", t1, "With the device");
-  const acc = h("span", "pill", t1, "most accurate");
-  acc.title = "Recorded by the same microphone, in the same spot, that will listen later.";
-  flow(b1, [["flash", "Install recording firmware"], ["qr", "Scan QR, record on phone"]]);
-  privacy(b1, "Temporary firmware: sound goes only to your browser, only while recording.");
-  button(b1, "Record with the device", () => go("create", 0));
-
-  const b2 = h("div", "way", ways);
-  const t2 = h("div", "way-head", b2);
-  icon(t2, "phone", "ic big");
-  h("strong", "", t2, "With a phone or laptop");
-  h("span", "pill", t2, "quickest");
-  flow(b2, [["laptop", "Record in this page"], ["file", "Load an audio file"]], true);
-  privacy(b2, "No extra firmware. Audio stays in this browser.");
-  button(b2, "Record or load audio", () => go("create", 2));
-
-  h("div", "merge", b, "then, in both cases");
-  flow(b, [["mark", "Mark the alarm"], ["build", "Build"], ["test", "Test"], ["code", "Copy YAML"], ["flash", "Install"], ["bell", "Done"]]);
+  const way = (ic: string, title: string, pill: string, text: string, label: string, onClick: () => void, tip?: string) => {
+    const w = h("div", "way", ways);
+    const t = h("div", "way-head", w);
+    icon(t, ic, "ic");
+    h("strong", "", t, title);
+    const p = h("span", "pill", t, pill);
+    if (tip) p.title = tip;
+    h("p", "way-text", w, text);
+    button(w, label, onClick);
+  };
+  way("chip", "The ESP32's microphone", "most accurate",
+    "Install a temporary recording firmware, scan a QR code, record from your phone. Sound goes only to your browser, only while recording.",
+    "Record with the device", () => go("create", 0),
+    "The same microphone, in the same spot, that will listen later.");
+  way("phone", "Phone or laptop mic, or a file", "quickest",
+    "Record in this page with your phone or laptop microphone, or load an audio file. No extra firmware; audio stays in this browser.",
+    "Record or load audio", () => go("create", 2));
 
   // --- C: hand it to an AI agent (covers every path above) ---
-  const c = h("div", "route route-c", root);
-  h("div", "route-tag", c, "Or");
+  const c = h("section", "route route-c", routes);
+  h("div", "route-tag", c, "Any appliance");
   const ch = h("div", "way-head", c);
   icon(ch, "agent", "ic big");
   h("h3", "", ch, "Let your AI agent do it");
-  h("p", "route-sub", c, "Coding agents with a terminal — Claude Code, Codex, Gemini CLI, Cursor, GitHub Copilot and similar — " +
-    "can pick a preset or build one from your recordings, generate the YAML and tell you when to plug in, place the device " +
-    "or play the alarm. Paste this into your agent:");
-  const fieldRow = h("label", "field agent-field", c);
+  h("p", "route-sub", c, "Claude Code, Codex, Gemini CLI, Cursor, Copilot and similar agents can do all of this and tell you " +
+    "when to plug in the device or play the alarm. Paste this prompt into your agent:");
+  const guide = "https://gl0wa.github.io/esphome-alarm-sound-detector/agent-guide.md";
+  let appliance = "";
+  const promptOf = () => `Set up an ESPHome alarm sound detector for my ${appliance || "appliance"} ` +
+    `and connect it to Home Assistant. Follow ${guide} — use its asd tool, keep my audio recordings on this computer, ` +
+    "and ask me before flashing anything or whenever you need me to do something physical.";
+  const row = h("div", "row", c);
+  const copyBtn = h("button", "primary", row, "Copy prompt") as HTMLButtonElement;
+  const msg = h("span", "muted", row, "");
+  msg.setAttribute("role", "status");
+  copyBtn.onclick = async () => {
+    try { await navigator.clipboard.writeText(promptOf()); msg.textContent = "Copied — paste it into your agent."; }
+    catch { msg.textContent = "Copy failed; open “Show the prompt” and select the text."; }
+  };
+  const det = h("details", "", c);
+  h("summary", "", det, "Show / personalise the prompt");
+  const fieldRow = h("label", "field agent-field", det);
   h("span", "", fieldRow, "Your appliance (optional)");
   const appl = h("input", "", fieldRow) as HTMLInputElement;
   appl.placeholder = "e.g. Tefal rice cooker RK8121";
-  const guide = "https://gl0wa.github.io/esphome-alarm-sound-detector/agent-guide.md";
-  const promptOf = () => `Set up an ESPHome alarm sound detector for my ${appl.value.trim() || "appliance"} ` +
-    `and connect it to Home Assistant. Follow ${guide} — use its asd tool, keep my audio recordings on this computer, ` +
-    "and ask me before flashing anything or whenever you need me to do something physical.";
-  const pre = h("pre", "snippet agent-prompt", c, promptOf());
-  appl.oninput = () => { pre.textContent = promptOf(); };
-  const row = h("div", "row", c);
-  const msg = h("span", "muted", row, "");
-  const copyBtn = h("button", "primary", row, "Copy prompt") as HTMLButtonElement;
-  copyBtn.onclick = async () => {
-    try { await navigator.clipboard.writeText(promptOf()); msg.textContent = "Copied."; }
-    catch { msg.textContent = "Copy failed; select the text above."; }
-  };
-  const links = h("span", "agent-links", row);
+  const pre = h("pre", "snippet agent-prompt", det, promptOf());
+  appl.oninput = () => { appliance = appl.value.trim(); pre.textContent = promptOf(); };
+  const links = h("p", "agent-links", c);
   const a1 = h("a", "", links, "Agent guide") as HTMLAnchorElement;
   a1.href = "https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/agent_guide.md"; a1.target = "_blank"; a1.rel = "noopener";
   h("span", "muted", links, " · ");
   const a2 = h("a", "", links, "asd command-line tool") as HTMLAnchorElement;
   a2.href = "cli/asd.mjs"; a2.setAttribute("download", "asd.mjs");
-  privacy(c, "The agent works on your computer; the guide tells it to keep recordings local and never upload them.");
+  privacy(c, "The agent works on your computer and keeps recordings local.");
 }
 
 function privacy(parent: HTMLElement, text: string) {

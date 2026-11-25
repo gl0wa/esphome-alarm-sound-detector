@@ -44,6 +44,20 @@ user through the browser studio instead — it does the same, step by step.
    stream sound (unencrypted on the LAN, key-protected). Always finish by
    installing the normal firmware, and tell the user you did.
 
+7. **Know where your commands run.** Before asking for recordings or hardware,
+   find out whether your shell runs on the user's own computer (Claude Code,
+   Codex CLI, Gemini CLI, Cursor, Aider… usually do) or in a hosted sandbox
+   (cloud agents, Copilot coding agent, web IDEs). A hosted sandbox cannot see
+   the user's Wi-Fi, USB devices or local files, and anything you print is
+   stored in the session transcript. There: never ask for recordings to be
+   uploaded to the sandbox; use the browser studio route (it keeps audio in the
+   user's browser) and only prepare YAML/settings, and let the user read keys
+   and keyed links on their own computer.
+8. **Work in a private folder.** Keep recordings, `device.json`, labels and
+   generated YAML in one folder outside any repository, or in a clone's
+   git-ignored `local/` folder. `asd` writes `device.json` and YAML files
+   owner-readable only.
+
 ---
 
 ## 2. What you need
@@ -206,6 +220,9 @@ turns on), builds the fingerprint and sets the threshold. It prints a
 **verdict** from the **margin** = weakest example score − score of the most
 similar other sound:
 
+The verdict describes **the recordings you tuned on** (a training margin);
+confirm with `asd test` on other recordings and on the real appliance.
+
 | Verdict | Margin | Meaning / action |
 |---|---|---|
 | reliable | ≥ +0.20 | go ahead |
@@ -225,7 +242,7 @@ asd test --preset rice_cooker.json other_recording.wav   # recordings not used f
 
 Reports, per file: when the alarm turned on, matches, near misses, max score,
 and with `--labels` which examples were missed and which matches fell outside
-examples. Good: every alarm episode turns the alarm on, no "matches away from
+examples (each match recognises at most one example). Good: every alarm episode turns the alarm on, no "matches away from
 examples". Also test the user's other recordings (other appliances, TV) if any,
 and catalog presets against the user's recordings when the user has several
 appliances (`asd test --preset <catalog preset json> rec.wav`).
@@ -264,11 +281,18 @@ after editing; `asd validate` checks the file.
    (talk, put dishes away)." The tool prints the peak level; below −45 dBFS
    means the microphone hears almost nothing (wiring, `--channel right`, distance).
    — or let the user record on their phone: `asd link --device device.json [--ip IP]`
-   prints the device page link (it contains the key; give it to the user only,
-   e.g. as a QR code or directly). The page sends clips to the browser studio.
+   prints the device page link (it contains the key — show it to the user on
+   their own screen, don't paste it into external services). On the device page
+   the user records, then taps **Download all as WAV** and copies the file to
+   the computer you work on (AirDrop, cable, cloud drive of their choice). The
+   page's "Send to preset studio" button continues in the *browser* studio on the
+   phone instead — fine for users who want to finish there; you then only
+   generate the final YAML.
 3. Continue with Path B (6.2 onwards).
-4. **Install the normal firmware** with the preset (`asd yaml --preset …`), which
-   removes the recording page. Tell the user the device is private again.
+4. **Install the normal firmware** with the preset (`asd yaml --device device.json
+   --preset …`, with the **same** `device.json` — its API key is the one Home
+   Assistant knows), which removes the recording page. Tell the user the device
+   is private again. (`asd yaml` refuses to mix `--recording` with presets.)
 
 Errors: `401` key mismatch (device.json differs from the installed firmware),
 `409` someone else is streaming (close the page on the phone), `429` too many
@@ -278,9 +302,9 @@ wrong keys — wait 30 s. Android phones often cannot open `.local` names: use t
 
 ## 8. Install and verify
 
-```sh
-asd yaml --device device.json --preset rice_cooker.json --out kitchen-sound-detector.yaml
-```
+The YAML comes from the path you followed: `asd yaml --device device.json`
+with `--ready ID` (Path A), `--recording` (Path C, temporary) or
+`--preset your_preset.json` (Paths B/C, final). Always the same `device.json`.
 
 - **ESPHome dashboard:** the user creates a new device and pastes the YAML (or
   replaces the existing device's YAML), then installs. Put the file in the

@@ -99,18 +99,21 @@ export function renderCreate(
     h("h3", "", body, "1. Install the recording firmware");
     renderDeviceCard(body, dev, () => renderCreate(root, s, dev, opts));
     const yaml = buildDeviceYaml(dev, [] as YamlPreset[], true);
-    h("pre", "snippet", body, yaml);
     const row = h("div", "row", body);
-    const msg = h("span", "muted", row, "");
     button(row, "Copy YAML", async () => {
       try { await navigator.clipboard.writeText(yaml); msg.textContent = "Copied."; }
-      catch { msg.textContent = "Copy failed; select the text above instead."; }
+      catch { msg.textContent = "Copy failed; open “Show the YAML” and select the text."; }
     }, "primary");
     button(row, "Download YAML", () => download(`${dev.deviceName}-recording.yaml`, yaml));
+    const msg = h("span", "muted", row, "");
+    msg.setAttribute("role", "status");
     const ol = h("ol", "steps-list", body);
     h("li", "", ol, "In the ESPHome dashboard: New device → paste this YAML (or replace the YAML of the existing device).");
     h("li", "", ol, "Make sure ESPHome's secrets contain wifi_ssid and wifi_password.");
     h("li", "", ol, "Install (the first install is over USB, later ones over Wi-Fi).");
+    const yd = h("details", "", body);
+    h("summary", "", yd, "Show the YAML");
+    h("pre", "snippet", yd, yaml);
 
     h("h3", "", body, "2. Record with your phone");
     note(body, "Once the device runs this firmware, scan the code with your phone (or open the link on a computer on the same Wi-Fi) — " +

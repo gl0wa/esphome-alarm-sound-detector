@@ -7,6 +7,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { FPS, SR } from "../src/const";
+import CATALOG from "../../components/alarm_sound_detector/presets/index.json";
 import { getFeatures, initWasm, runDetector } from "../src/dsp";
 import { findSimilar } from "../src/similar";
 import { autoTune, measureSoundLength } from "../src/pipeline";
@@ -49,6 +50,7 @@ labels.json: {"examples": [{"file": "rec.wav", "t0": 18.6, "t1": 19.26}, ...]}  
 `;
 
 // ---------- argument parsing ----------
+const BOOL_FLAGS = new Set(["json", "recording", "help"]);
 type Args = { _: string[]; [k: string]: string | string[] | boolean };
 function parseArgs(argv: string[]): Args {
   const a: Args = { _: [] };
@@ -57,7 +59,7 @@ function parseArgs(argv: string[]): Args {
     if (t.startsWith("--")) {
       const k = t.slice(2);
       const next = argv[i + 1];
-      if (next === undefined || next.startsWith("--")) { a[k] = true; continue; }
+      if (BOOL_FLAGS.has(k) || next === undefined || next.startsWith("--")) { a[k] = true; continue; }
       i++;
       const prev = a[k];
       a[k] = prev === undefined || prev === true ? next : Array.isArray(prev) ? [...prev, next] : [prev as string, next];
@@ -201,12 +203,17 @@ function cmdYaml(a: Args) {
     const label = str(a, "label") ?? (doc.name as string);
     presets.push({ id: safeId(label || (doc.id as string)), ref: null, doc, label });
   }
-  for (const id of list(a, "ready")) presets.push({ id: safeId(id.replace(/^vorwerk_/, "").replace(/_alarm$/, "")), ref: id });
+  for (const id of list(a, "ready")) {
+    const known = (CATALOG.presets as { id: string; aliases?: string[] }[]).some((p) => p.id === id || (p.aliases ?? []).includes(id));
+    if (!known) die(`--ready ${id}: not in the bundled catalog (${CATALOG.presets.map((p: { id: string }) => p.id).join(", ")})`);
+    presets.push({ id: safeId(id.replace(/^vorwerk_/, "").replace(/_alarm$/, "")), ref: id });
+  }
   const rec = a.recording === true;
+  if (rec && presets.length) die("--recording makes the temporary recording firmware; it cannot be combined with --preset/--ready (install the normal firmware with the preset afterwards)");
   if (!rec && !presets.length) die("give --recording, or at least one --preset / --ready");
   const yaml = buildDeviceYaml(dev, presets, rec);
   const o = str(a, "out");
-  if (o) writeFileSync(o, yaml);
+  if (o) writeFileSync(o, yaml, { mode: 0o600 }); // contains the API (and capture) key
   if (o || JSON_OUT) out(`wrote ${o}`, { out: o ?? null, yaml: o ? undefined : yaml, recording: rec });
   else process.stdout.write(yaml);
 }
@@ -378,10 +385,11 @@ function cmdTune(a: Args) {
     min_repetitions: s.params.min_repetitions, threshold: s.params.threshold, near_threshold: s.params.near_threshold,
     examples: s.examples.length, shareable,
   };
-  out(`wrote ${file} — ${{ good: "reliable", fair: "usable but close", bad: "FRAGILE" }[r.verdict]} (margin ${r.margin >= 0 ? "+" : ""}${r.margin.toFixed(2)}: weakest example ${summary.weakest_example}, most similar other sound ${summary.most_similar_other})\n` +
+  out(`wrote ${file} — on these recordings: ${{ good: "reliable", fair: "usable but close", bad: "FRAGILE" }[r.verdict]} (margin ${r.margin >= 0 ? "+" : ""}${r.margin.toFixed(2)}: weakest example ${summary.weakest_example}, most similar other sound ${summary.most_similar_other})\n` +
     `listens to ${s.band.loHz}–${s.band.hiHz} Hz, sound ${s.duration} s, ` +
     (s.params.period_s ? `repeats every ${s.params.period_s.toFixed(2)} s, alarm after ${s.params.min_repetitions} matches` : `single sound, alarm after ${s.params.min_repetitions} match(es)`) +
     `, threshold ${s.params.threshold}\n${r.bandText} ${r.periodText}` +
+    "\nVerify with recordings not used for tuning (asd test) and, after installing, with the real appliance." +
     (shareable ? "" : "\n(personal preset: give --id --name --manufacturer --model --sound --validation to make it shareable)"), summary);
 }
 
@@ -401,8 +409,15 @@ function cmdTest(a: Args) {
     const units = events.filter((e) => e.type === "unit").map((e) => +e.t.toFixed(2));
     const expected = lab ? lab.s.examples.filter((e) => e.recId === r.id).map((e) => (e.t0 + e.t1) / 2) : [];
     const W = p.frames / FPS;
-    const missed = expected.filter((t) => !units.some((u) => u - W - 0.6 <= t && t <= u + 0.6)).map((t) => +t.toFixed(2));
-    const stray = lab ? units.filter((u) => !expected.some((t) => u - W - 0.6 <= t && t <= u + 0.6)) : [];
+    // One detection recognises at most one example (closest first).
+    const fits = (u: number, t: number) => u - W - 0.6 <= t && t <= u + 0.6;
+    const usedU = new Set<number>(), usedE = new Set<number>();
+    const pairs: [number, number, number][] = [];
+    units.forEach((u, ui) => expected.forEach((t, ei) => { if (fits(u, t)) pairs.push([Math.abs(u - W / 2 - t), ui, ei]); }));
+    pairs.sort((x, y) => x[0] - y[0]);
+    for (const [, ui, ei] of pairs) if (!usedU.has(ui) && !usedE.has(ei)) { usedU.add(ui); usedE.add(ei); }
+    const missed = expected.filter((_, ei) => !usedE.has(ei)).map((t) => +t.toFixed(2));
+    const stray = lab ? units.filter((_, ui) => !usedU.has(ui)) : [];
     let max = 0; for (const x of scores) max = Math.max(max, x);
     void firstFrame;
     return {

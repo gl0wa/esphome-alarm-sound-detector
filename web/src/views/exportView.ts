@@ -101,7 +101,8 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void, d
   function renderInstall() {
     const fromDevice = getRoute() === "device";
     renderDeviceCard(body, dev, () => renderTab());
-    const pre = h("pre", "snippet", body, "");
+    const pre = document.createElement("pre");
+    pre.className = "snippet";
     let yaml = "";
     refreshYaml = () => {
       const doc = personalDoc();
@@ -111,12 +112,13 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void, d
     };
     refreshYaml();
     const row = h("div", "row", body);
-    const copyMsg = h("span", "muted", row, "");
     button(row, "Copy YAML", async () => {
       try { await navigator.clipboard.writeText(yaml); copyMsg.textContent = "Copied."; }
-      catch { copyMsg.textContent = "Copy failed; select the text above instead."; }
+      catch { copyMsg.textContent = "Copy failed; open “Show the YAML” and select the text."; }
     }, "primary");
     button(row, "Download YAML", () => download(`${dev.deviceName}.yaml`, yaml));
+    const copyMsg = h("span", "muted", row, "");
+    copyMsg.setAttribute("role", "status");
     const ol = h("ol", "steps-list", body);
     h("li", "", ol, fromDevice
       ? "In the ESPHome dashboard, replace the device's YAML with this one (this removes the recording firmware — sound stays on the device again)."
@@ -124,6 +126,9 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void, d
     h("li", "", ol, "Make sure ESPHome's secrets contain wifi_ssid and wifi_password.");
     h("li", "", ol, fromDevice ? "Install (over Wi-Fi)." : "Install (the first install is over USB, later ones over Wi-Fi).");
     h("li", "", ol, "Add the device in Home Assistant. Test it with the real appliance and watch the match score for the first days.");
+    const yd = h("details", "", body);
+    h("summary", "", yd, "Show the YAML");
+    yd.appendChild(pre);
     const hand = h("p", "note", body, "Maintaining your YAML by hand? ");
     button(hand, "Download preset JSON", () => {
       download(`${id()}.json`, JSON.stringify(personalDoc(), null, 1) + "\n");
