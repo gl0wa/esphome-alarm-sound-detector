@@ -11,7 +11,7 @@ esphome:
   min_version: 2026.11.0
   project:
     name: "thermomix-alert-detector.esphome"
-    version: "0.2.0"
+    version: "0.2.1"
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -23,6 +23,12 @@ esp32:
 logger:
   level: INFO
   hardware_uart: USB_SERIAL_JTAG
+  # Entity state changes are already visible in Home Assistant; keep the log for the
+  # detector's own events (repetitions, near misses, alarm start/end) and problems.
+  logs:
+    sensor: WARN
+    text_sensor: WARN
+    binary_sensor: WARN
 
 external_components:
   - source:
