@@ -1,7 +1,7 @@
 // Preset studio: teach the alarm detector a new appliance sound, in the browser.
 import "./style.css";
 import { initWasm } from "./dsp";
-import { h, note } from "./helpers";
+import { h, note, stepNav } from "./helpers";
 import { freshState } from "./store";
 import { renderBuild } from "./views/build";
 import { renderEvaluate } from "./views/evaluate";
@@ -18,7 +18,16 @@ async function boot() {
   const app = document.getElementById("app")!;
   app.innerHTML = "";
   const header = h("header", "", app);
-  h("h1", "", header, "Preset studio");
+  const titleRow = h("div", "title-row", header);
+  h("h1", "", titleRow, "Preset studio");
+  const themeBtn = h("button", "theme-toggle", titleRow);
+  const isLight = () => document.documentElement.dataset.theme === "light";
+  const themeLabel = () => {
+    themeBtn.textContent = isLight() ? "☾" : "☀";
+    themeBtn.title = isLight() ? "Switch to dark theme" : "Switch to light theme";
+    themeBtn.setAttribute("aria-label", themeBtn.title);
+  };
+  themeLabel();
   h("p", "muted", header, "Teach the alarm detector a new appliance sound. All processing happens on your device — audio never leaves this page.");
   const nav = h("nav", "tabs", app);
   const status = h("p", "muted", app, "Loading the detector (WebAssembly)…");
@@ -35,12 +44,23 @@ async function boot() {
     main.innerHTML = "";
     const wrap = h("section", "", main);
     const refresh = () => render();
+    const go = (i: number) => { current = i; render(); window.scrollTo({ top: 0, behavior: "smooth" }); };
     try {
       if (current === 0) renderRecordings(wrap, s, { refresh });
       else if (current === 1) renderExamples(wrap, s, refresh);
       else if (current === 2) renderBuild(wrap, s, refresh);
       else if (current === 3) renderEvaluate(wrap, s, refresh);
       else renderExport(wrap, s, refresh);
+      const blocked = [
+        !s.recordings.length ? "Load a recording first." : !s.examples.length ? "Mark at least one example first." : undefined,
+        !s.examples.length ? "Mark or accept at least one example first." : undefined,
+        !s.template ? "Build the template first." : undefined,
+        undefined,
+      ][current];
+      stepNav(wrap, {
+        back: current > 0 ? { label: steps[current - 1], go: () => go(current - 1) } : undefined,
+        next: current < steps.length - 1 ? { label: `Next: ${steps[current + 1]}`, go: () => go(current + 1), blockedReason: blocked } : undefined,
+      });
     } catch (e) {
       note(wrap, `Something went wrong: ${e}`);
     }
@@ -49,13 +69,11 @@ async function boot() {
   try {
     await initWasm();
     status.textContent = `Detector ready (16 kHz, firmware DSP in WebAssembly).`;
-    const themeBtn = h("button", "theme", header, document.documentElement.dataset.theme === "light" ? "☾ dark" : "☀ light");
     themeBtn.onclick = () => {
-      const d = document.documentElement.dataset.theme === "light" ? "" : "light";
-      if (d) document.documentElement.dataset.theme = d;
-      else delete document.documentElement.dataset.theme;
-      try { localStorage.setItem("theme", d || "dark"); } catch { /* noop */ }
-      themeBtn.textContent = d === "light" ? "☾ dark" : "☀ light";
+      if (isLight()) delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = "light";
+      try { localStorage.setItem("theme", isLight() ? "light" : "dark"); } catch { /* noop */ }
+      themeLabel();
       render();
     };
     render();

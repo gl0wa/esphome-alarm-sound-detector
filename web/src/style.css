@@ -55,7 +55,29 @@ button {
 }
 button:disabled { opacity: 0.45; cursor: default; }
 button:hover:not(:disabled) { border-color: var(--accent); }
-.theme { float: right; margin-top: -3.2em; }
+.title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.theme-toggle { width: 34px; height: 34px; min-height: 0 !important; padding: 0; border-radius: 50%;
+  font-size: 1rem; line-height: 1; flex: none; }
+.help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;
+  margin-left: 5px; border-radius: 50%; font-size: 0.7rem; font-weight: 700; text-decoration: none;
+  color: var(--accent); border: 1px solid var(--accent); vertical-align: middle; cursor: help; }
+.help:hover { background: var(--accent); color: #fff; }
+.step-nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 28px 0 8px;
+  padding-top: 14px; border-top: 1px solid var(--border); }
+.step-nav .spacer { flex: 1; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button.primary:disabled { background: transparent; color: var(--muted); }
+.subtabs { display: flex; gap: 0; margin: 12px 0 4px; border-bottom: 1px solid var(--border); }
+.subtab { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 8px 14px; margin: 0; }
+.subtab.active { border-bottom-color: var(--accent); color: var(--text); font-weight: 600; }
+.status-badge { font-size: 0.75rem; padding: 1px 7px; border-radius: 10px; border: 1px solid var(--border); }
+.status-badge.accepted { color: #3ddc84; border-color: #3ddc84; }
+.status-badge.rejected { color: #ff6b6b; border-color: #ff6b6b; }
+.status-badge.pending { color: #ffbf3f; border-color: #ffbf3f; }
+.list-item.rejected > span:not(.status-badge):not(.badge) { opacity: 0.55; text-decoration: line-through; }
+pre.snippet { background: var(--panel, rgba(127,127,127,.08)); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px; overflow-x: auto; font-size: 0.8rem; }
+ol.steps-list li { margin: 6px 0; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin: 8px 0; }
 .field { display: flex; flex-direction: column; gap: 2px; font-size: 0.85rem; color: var(--muted); }
@@ -137,5 +159,4 @@ footer { margin-top: 32px; font-size: 0.85rem; }
 input[type="file"] { max-width: 100%; }
 @media (max-width: 600px) {
   #app { padding: 8px 10px 48px; }
-  .theme { float: none; margin: 4px 0; }
 }

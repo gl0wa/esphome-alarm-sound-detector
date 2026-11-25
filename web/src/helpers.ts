@@ -1,4 +1,5 @@
 // Small DOM helpers shared by the views.
+import { helpIcon } from "./help";
 export function h<K extends keyof HTMLElementTagNameMap>(
   tag: K, cls: string, parent: HTMLElement, text?: string,
 ): HTMLElementTagNameMap[K] {
@@ -16,10 +17,11 @@ export function button(parent: HTMLElement, label: string, fn: () => void, cls =
 }
 
 export function field(parent: HTMLElement, label: string, value: string | number, opts?: {
-  type?: string; step?: string; onChange?: (v: string) => void; title?: string;
+  type?: string; step?: string; onChange?: (v: string) => void; title?: string; help?: string;
 }): HTMLInputElement {
   const wrap = h("label", "field", parent);
-  h("span", "", wrap, label);
+  const lab = h("span", "", wrap, label);
+  if (opts?.help) helpIcon(lab, opts.help);
   const inp = h("input", "", wrap) as HTMLInputElement;
   inp.type = opts?.type ?? "text";
   if (opts?.step) inp.step = opts.step;
@@ -44,4 +46,19 @@ export function download(name: string, content: string | Blob) {
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+/** Back / next buttons at the bottom of a step. */
+export function stepNav(parent: HTMLElement, opts: {
+  back?: { label: string; go: () => void };
+  next?: { label: string; go: () => void; blockedReason?: string };
+}): void {
+  const nav = h("div", "step-nav", parent);
+  if (opts.back) button(nav, `← ${opts.back.label}`, opts.back.go, "secondary");
+  h("span", "spacer", nav);
+  if (opts.next) {
+    if (opts.next.blockedReason) h("span", "muted", nav, opts.next.blockedReason);
+    const b = button(nav, `${opts.next.label} →`, opts.next.go, "primary");
+    b.disabled = !!opts.next.blockedReason;
+  }
 }

@@ -17,6 +17,8 @@ export interface Example {
 export interface Candidate extends Example {
   score: number;
   status: "pending" | "accepted" | "rejected";
+  /** Example created when this candidate was accepted (removed again on undo/reject). */
+  exampleId?: string;
 }
 
 export interface EvalRec {

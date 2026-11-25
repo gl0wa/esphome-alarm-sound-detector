@@ -39,6 +39,9 @@ issues/PRs — presets contain no audio, so they are safe to contribute.
 
 ## 3. Build (step 3)
 
+Every setting is explained in detail in [preset_parameters.md](preset_parameters.md)
+(the studio's “?” icons link there).
+
 - **Band:** start with 400–4500 Hz; “Suggest from examples” narrows it to where your
   sound stands out from the background. Narrower is usually more robust.
 - **Sound length:** how long one beep/chime lasts (default 1.3 s).

@@ -2,7 +2,8 @@
 import { FPS } from "../const";
 import { runDetector } from "../dsp";
 import { button, fmtT, h, note } from "../helpers";
-import { State, uid } from "../store";
+import { Candidate, State, uid } from "../store";
+import { helpIcon } from "../help";
 import { exampleFrameRange, quantizeTemplate } from "../template";
 import { player } from "./recordings";
 import { getFeatures } from "../dsp";
@@ -31,6 +32,7 @@ export function renderExamples(root: HTMLElement, s: State, refresh: () => void)
     button(item, "Play", () => { if (rec) player.play(rec, e.t0, e.t1); });
     button(item, "✕", () => {
       s.examples = s.examples.filter((x) => x !== e);
+      for (const c of s.candidates) if (c.exampleId === e.id) { c.status = "pending"; c.exampleId = undefined; }
       refresh();
     });
   }
@@ -56,23 +58,49 @@ export function renderExamples(root: HTMLElement, s: State, refresh: () => void)
     note(root, "No candidates yet.");
     return;
   }
-  h("h3", "", root, `Candidates (${s.candidates.filter((c) => c.status === "pending").length} pending)`);
+  const pending = s.candidates.filter((c) => c.status === "pending").length;
+  const ch = h("h3", "", root, `Candidates (${pending} to review, ${s.candidates.length - pending} decided)`);
+  helpIcon(ch, "candidates");
+  note(root, "Each candidate box is exactly one template length (step 3 “sound length”), placed where the match is best. " +
+    "Accept it if the whole characteristic sound is inside, even with some quiet around it — that is expected. " +
+    "Reject it if it is a different sound, or only a fragment of yours. If the sound fills only a small part of every box, " +
+    "lower the sound length in step 3. You can change any decision later.");
   const cl = h("div", "list", root);
+  const accept = (c: Candidate) => {
+    c.status = "accepted";
+    if (!c.exampleId || !s.examples.some((e) => e.id === c.exampleId)) {
+      const dup = s.examples.find((e) => e.recId === c.recId && Math.abs(e.t0 - c.t0) < 0.3);
+      if (dup) c.exampleId = dup.id;
+      else {
+        const id = uid();
+        s.examples.push({ id, recId: c.recId, t0: c.t0, t1: c.t1 });
+        c.exampleId = id;
+      }
+    }
+    refresh();
+  };
+  const unaccept = (c: Candidate, to: "pending" | "rejected") => {
+    if (c.exampleId) s.examples = s.examples.filter((e) => e.id !== c.exampleId);
+    c.exampleId = undefined;
+    c.status = to;
+    refresh();
+  };
   for (const c of s.candidates) {
     const rec = s.recordings.find((r) => r.id === c.recId);
-    const item = h("div", "list-item", cl);
+    const item = h("div", `list-item ${c.status}`, cl);
     h("span", "badge", item, c.score.toFixed(2));
-    h("span", "", item, `${rec?.name ?? "?"} ${fmtT(c.t0)}–${fmtT(c.t1)} [${c.status}]`);
-    button(item, "Play", () => { if (rec) player.play(rec, Math.max(0, c.t0 - 0.5)); });
+    h("span", `status-badge ${c.status}`, item, c.status === "pending" ? "to review" : c.status);
+    h("span", "", item, `${rec?.name ?? "?"} ${fmtT(c.t0)}–${fmtT(c.t1)}`);
+    button(item, "▶ Play", () => { if (rec) player.play(rec, Math.max(0, c.t0 - 0.3), c.t1 + 0.3); });
     if (c.status === "pending") {
-      button(item, "Accept", () => {
-        c.status = "accepted";
-        if (!s.examples.some((e) => e.recId === c.recId && Math.abs(e.t0 - c.t0) < 0.3)) {
-          s.examples.push({ id: uid(), recId: c.recId, t0: c.t0, t1: c.t1 });
-        }
-        refresh();
-      });
-      button(item, "Reject", () => { c.status = "rejected"; refresh(); });
+      button(item, "Accept", () => accept(c));
+      button(item, "Reject", () => unaccept(c, "rejected"));
+    } else if (c.status === "accepted") {
+      button(item, "Reject instead", () => unaccept(c, "rejected"));
+      button(item, "Undo", () => unaccept(c, "pending"));
+    } else {
+      button(item, "Accept instead", () => accept(c));
+      button(item, "Undo", () => unaccept(c, "pending"));
     }
   }
   void W;

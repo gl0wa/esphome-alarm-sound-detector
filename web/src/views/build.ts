@@ -3,6 +3,7 @@ import { FPS, bandFromHz } from "../const";
 import { getFeatures, runDetector } from "../dsp";
 import { button, field, fmtT, h, note } from "../helpers";
 import { State } from "../store";
+import { helpIcon } from "../help";
 import { buildTemplate, estimatePeriod, exampleFrameRange, suggestBand, suggestThresholds } from "../template";
 
 export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
@@ -18,10 +19,10 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
   const W = Math.round(s.duration * 62.5);
 
   // --- band ---
-  h("h3", "", root, "Spectral band");
+  helpIcon(h("h3", "", root, "Frequency band"), "band");
   const bandRow = h("div", "row", root);
-  const loInp = field(bandRow, "from (Hz)", s.band.loHz, { type: "number" });
-  const hiInp = field(bandRow, "to (Hz)", s.band.hiHz, { type: "number" });
+  const loInp = field(bandRow, "lowest pitch (Hz)", s.band.loHz, { type: "number" });
+  const hiInp = field(bandRow, "highest pitch (Hz)", s.band.hiHz, { type: "number" });
   const sugLabel = h("span", "muted", root, "");
   button(bandRow, "Suggest from examples", () => {
     try {
@@ -41,10 +42,13 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
 
   // --- duration / mode ---
   h("h3", "", root, "Sound shape");
+  note(root, "How long one occurrence of the sound is, and whether the appliance repeats it until someone reacts.");
   const shRow = h("div", "row", root);
-  const durInp = field(shRow, "sound length (s)", s.duration, { type: "number", step: "0.1" });
-  const repSel = h("select", "", shRow) as HTMLSelectElement;
-  for (const [v, t] of [["rep", "repeating alarm"], ["single", "single sound"]]) {
+  const durInp = field(shRow, "sound length (s)", s.duration, { type: "number", step: "0.1", help: "duration" });
+  const modeWrap = h("label", "field", shRow);
+  helpIcon(h("span", "", modeWrap, "pattern"), "mode");
+  const repSel = h("select", "", modeWrap) as HTMLSelectElement;
+  for (const [v, t] of [["rep", "repeats at a steady rhythm"], ["single", "single sound"]]) {
     const o = h("option", "", repSel, t) as HTMLOptionElement;
     o.value = v;
   }
@@ -68,14 +72,15 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
 
   // --- detection params ---
   h("h3", "", root, "Detection");
+  note(root, "Usually you only adjust the threshold (use “Suggest thresholds”). Hover or tap ? for an explanation of each setting.");
   const p = h("div", "grid", root);
-  const pThr = field(p, "threshold", s.params.threshold, { type: "number", step: "0.01" });
-  const pNear = field(p, "near threshold", s.params.near_threshold, { type: "number", step: "0.01" });
-  const pMin = field(p, "min repetitions", s.params.min_repetitions, { type: "number", step: "1" });
-  const pPer = field(p, "period (s, empty = single)", s.params.period_s ?? "", { type: "number", step: "0.001" });
-  const pTol = field(p, "period tolerance (s)", s.params.period_tolerance_s, { type: "number", step: "0.01" });
-  const pRefr = field(p, "refractory (s)", s.params.refractory_s, { type: "number", step: "0.1" });
-  const pRel = field(p, "release (s)", s.params.release_s, { type: "number", step: "0.1" });
+  const pThr = field(p, "threshold (match score 0–1)", r2(s.params.threshold), { type: "number", step: "0.01", help: "threshold" });
+  const pNear = field(p, "near-miss level", r2(s.params.near_threshold), { type: "number", step: "0.01", help: "near_threshold" });
+  const pMin = field(p, "repetitions before alarm", s.params.min_repetitions, { type: "number", step: "1", help: "min_repetitions" });
+  const pPer = field(p, "repeats every (s)", s.params.period_s ?? "", { type: "number", step: "0.001", help: "period" });
+  const pTol = field(p, "rhythm tolerance (s)", s.params.period_tolerance_s, { type: "number", step: "0.01", help: "period_tolerance" });
+  const pRefr = field(p, "ignore re-matches for (s)", s.params.refractory_s, { type: "number", step: "0.1", help: "refractory" });
+  const pRel = field(p, "alarm off after silence (s)", s.params.release_s, { type: "number", step: "0.1", help: "release" });
   const readParams = () => {
     s.duration = Math.max(0.2, Math.min(5, parseFloat(durInp.value) || 1.3));
     s.repeating = repSel.value === "rep";
@@ -111,7 +116,8 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
       s.margin = { minPos: r.minPos, maxNeg: r.maxNeg, margin: r.margin };
       msg.textContent = `Suggested threshold ${r.threshold} / near ${r.near}: ` +
         `weakest example scores ${r.minPos.toFixed(2)}, loudest background ${r.maxNeg.toFixed(2)} ` +
-        `(margin ${r.margin >= 0 ? "+" : ""}${r.margin.toFixed(2)}).`;
+        `(margin ${r.margin >= 0 ? "+" : ""}${r.margin.toFixed(2)}).` +
+        (pendingCount(s) ? ` ${pendingCount(s)} unreviewed candidate(s) were left out — review them in step 2 for a reliable margin.` : "");
       refresh();
     } catch (e) { msg.textContent = `Suggestion failed: ${e}`; }
   });
@@ -125,10 +131,12 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
         `${s.margin.maxNeg.toFixed(2)} (margin ${s.margin.margin >= 0 ? "+" : ""}${s.margin.margin.toFixed(2)}). ` +
         `Bigger is better; below +0.10 is fragile.`);
     }
-    note(root, "Next: run the full firmware detector over every recording in step 4.");
   }
   void fmtT;
 }
+
+const pendingCount = (s: State) => s.candidates.filter((c) => c.status === "pending").length;
+const r2 = (v: number) => Math.round(v * 100) / 100;
 
 function featsForExamples(s: State) {
   const { binLo, binHi } = s.band;
@@ -183,20 +191,17 @@ function thresholdSuggestion(s: State) {
     const { scores, firstFrame } = runDetector(r.pcm, s.template.q, W, s.template.bins, {
       ...s.params, threshold: 2, near_threshold: 1.5, min_repetitions: 255,
     }, s.band);
-    const expected = s.examples.filter((e) => e.recId === r.id)
-      .map((e) => (exampleFrameRange(e.t0, e.t1, 1e9, W).f0 + W) / FPS);
-    if (!expected.length) {
-      for (let i = 0; i < scores.length; i++) if (scores[i] > maxNeg) maxNeg = scores[i];
-      continue;
-    }
-    const r2 = suggestThresholds(scores, firstFrame, expected, W);
-    if (r2.minPos < minPos) minPos = r2.minPos;
+    const endT = (t0: number, t1: number) => (exampleFrameRange(t0, t1, 1e9, W).f0 + W) / FPS;
+    const expected = s.examples.filter((e) => e.recId === r.id).map((e) => endT(e.t0, e.t1));
+    const ignore = s.candidates.filter((c) => c.recId === r.id && c.status === "pending").map((c) => endT(c.t0, c.t1));
+    const r2 = suggestThresholds(scores, firstFrame, expected, W, ignore);
+    if (expected.length && r2.minPos < minPos) minPos = r2.minPos;
     if (r2.maxNeg > maxNeg) maxNeg = r2.maxNeg;
   }
   if (!isFinite(minPos)) minPos = 0.55;
   if (!isFinite(maxNeg)) maxNeg = 0.3;
   const threshold = Math.round(((minPos + maxNeg) / 2) * 100) / 100;
-  const near = Math.max(0.05, Math.min(threshold - 0.05, Math.round((maxNeg + 0.05) * 100) / 100));
+  const near = r2(Math.max(0.05, Math.min(threshold - 0.05, maxNeg + 0.05)));
   return { threshold, near, margin: minPos - maxNeg, minPos, maxNeg };
 }
 

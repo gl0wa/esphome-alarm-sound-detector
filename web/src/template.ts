@@ -123,10 +123,12 @@ export function estimatePeriod(timesS: number[]): { period: number | null; text:
 /** Suggest threshold/near_threshold from positive vs background scores. */
 export function suggestThresholds(
   scores: Float32Array, firstFrame: number, expectedTimes: number[], W: number,
+  ignoreTimes: number[] = [], // unreviewed candidates: neither positive nor background
 ): { threshold: number; near: number; margin: number; minPos: number; maxNeg: number } {
   const fps = FPS;
   const at = (t: number) => Math.round(t * fps) - firstFrame; // score index
-  const isNearEx = (idx: number) => expectedTimes.some((t) => Math.abs(idx - at(t)) * 2 <= 2 * fps);
+  const skip = [...expectedTimes, ...ignoreTimes];
+  const isNearEx = (idx: number) => skip.some((t) => Math.abs(idx - at(t)) * 2 <= 2 * fps);
   let minPos = Infinity;
   for (const t of expectedTimes) {
     let best = -Infinity;
