@@ -1,0 +1,113 @@
+blueprint:
+  name: Appliance alarm – notify phone if still ringing
+  description: >
+    Sends a push notification to a phone (Home Assistant Companion app) when an
+    `alarm_sound_detector` alarm binary sensor has been ON for a configurable time
+    (i.e. nobody acknowledged the appliance yet). Optionally repeats a reminder while
+    the alarm keeps ringing, and clears the notification when the alarm stops.
+  domain: automation
+  input:
+    alarm_sensor:
+      name: Alarm binary sensor
+      description: The binary sensor exposed by alarm_sound_detector (e.g. "Thermomix alarm").
+      selector:
+        entity:
+          filter:
+            domain: binary_sensor
+    notify_device:
+      name: Phone
+      description: Device running the Home Assistant Companion app.
+      selector:
+        device:
+          filter:
+            integration: mobile_app
+    delay:
+      name: Notify only if still ringing after
+      description: How long the alarm must be continuously detected before notifying.
+      default:
+        seconds: 20
+      selector:
+        duration:
+    reminder_interval:
+      name: Reminder interval
+      description: Repeat the notification this often while still ringing. 0 disables reminders.
+      default:
+        minutes: 0
+      selector:
+        duration:
+    title:
+      name: Title
+      default: "Thermomix"
+      selector:
+        text:
+    message:
+      name: Message
+      default: "The Thermomix needs your attention."
+      selector:
+        text:
+    tag:
+      name: Notification tag
+      description: Used to replace/clear the notification. Keep unique per appliance.
+      default: "appliance_alarm_thermomix"
+      selector:
+        text:
+    channel:
+      name: Android notification channel
+      description: Lets you pick a dedicated sound/importance for these alerts on Android.
+      default: "Appliance alarms"
+      selector:
+        text:
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input alarm_sensor
+    to: "on"
+    for: !input delay
+
+variables:
+  reminder: !input reminder_interval
+  reminder_s: >-
+    {{ (reminder.days | default(0) | int) * 86400 + (reminder.hours | default(0) | int) * 3600
+       + (reminder.minutes | default(0) | int) * 60 + (reminder.seconds | default(0) | int) }}
+
+actions:
+  - repeat:
+      sequence:
+        - domain: mobile_app
+          type: notify
+          device_id: !input notify_device
+          title: !input title
+          message: !input message
+          data:
+            tag: !input tag
+            channel: !input channel
+            priority: high
+            ttl: 0
+        - if:
+            - condition: template
+              value_template: "{{ reminder_s | int > 0 }}"
+          then:
+            - wait_for_trigger:
+                - trigger: state
+                  entity_id: !input alarm_sensor
+                  from: "on"
+              timeout:
+                seconds: "{{ reminder_s | int }}"
+          else:
+            - wait_for_trigger:
+                - trigger: state
+                  entity_id: !input alarm_sensor
+                  from: "on"
+      # Stop when the alarm left "on" (off or unavailable); otherwise remind again.
+      until:
+        - condition: template
+          value_template: "{{ wait.trigger is not none }}"
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    message: clear_notification
+    data:
+      tag: !input tag
