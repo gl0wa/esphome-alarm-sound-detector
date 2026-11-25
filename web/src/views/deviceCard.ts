@@ -12,6 +12,7 @@ import {
   genCaptureKey,
   saveDeviceSettings,
 } from "../device";
+import { SITE_DOCS_URL } from "../help";
 
 export function renderDeviceCard(parent: HTMLElement, dev: DeviceSettings, onChange: () => void) {
   const box = h("section", "device-card", parent);
@@ -49,7 +50,7 @@ export function renderDeviceCard(parent: HTMLElement, dev: DeviceSettings, onCha
   const hwNote = h("p", "note", box, `${hw.note} `);
   if (!hw.tested) h("span", "", hwNote, "Not yet verified on this hardware by the project — please report how it works.");
   const wl = h("a", "", hwNote, " Wiring and microphones →") as HTMLAnchorElement;
-  wl.href = "https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/wiring.md";
+  wl.href = `${SITE_DOCS_URL}/wiring.md`;
   wl.target = "_blank"; wl.rel = "noopener";
 
   const save = () => { saveDeviceSettings(dev); onChange(); };

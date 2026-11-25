@@ -52,6 +52,16 @@ Private, household-specific operational notes live in `local/PRIVATE_NOTES.md`
    +0.52, on-device repetitions 0.74-0.84, "Alarm started", no false alarm in 35 s silence.
    Device left running the final test-ride firmware ("testride-detector"). Other presets untested.
 
+10. [x] In-app doc links self-hosted (2026-11-26): the "Wiring and microphones" link
+    (and every other in-app doc link) pointed at github.com blob pages, which fail
+    from some networks/webviews. docs/{wiring,preset_parameters,preset_authoring,
+    home_assistant}.md are now published to the Pages site (/docs/), agent_guide.md
+    stays at /agent-guide.md, examples at /examples/ (copy-presets.mjs rewrites
+    relative links; assets/wiring.svg included). All in-app links use SITE_URL/
+    SITE_DOCS_URL (help.ts); only GitHub-action links (upload, new issue) still
+    target github.com. Regression test web/tests/site-links.test.ts; pages.yml
+    rebuilds the site on docs/examples/assets changes.
+
 ## Decisions
 - ESP-IDF; detector at 16 kHz (TM6 content < 5 kHz); production firmware has no audio
   egress, capture is dev-only.

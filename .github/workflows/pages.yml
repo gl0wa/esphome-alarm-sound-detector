@@ -6,6 +6,9 @@ on:
     paths:
       - "web/**"
       - "components/alarm_sound_detector/**"
+      - "docs/**"
+      - "examples/**"
+      - "assets/wiring.svg"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 

@@ -424,4 +424,7 @@ error (message on stderr), 1 = validation failed.
 - `CLAUDE.md` (Claude Code) and `GEMINI.md` (Gemini CLI) import `AGENTS.md`.
 - `.github/copilot-instructions.md` (GitHub Copilot) points here.
 - Without the repository: <https://gl0wa.github.io/esphome-alarm-sound-detector/agent-guide.md>
-  and <https://gl0wa.github.io/esphome-alarm-sound-detector/llms.txt>.
+  and <https://gl0wa.github.io/esphome-alarm-sound-detector/llms.txt>. The guides
+  the studio links to (wiring, preset parameters, authoring, Home Assistant) and
+  the example YAML files are published next to the site under `docs/` and
+  `examples/`; the studio links there, not to GitHub blob pages.

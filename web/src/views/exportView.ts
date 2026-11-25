@@ -2,7 +2,7 @@
 import { buildPresetDoc, personalPresetDoc, PresetMeta, validatePreset } from "../preset";
 import { button, download, field, h, note, textArea } from "../helpers";
 import { clearSession, State, storageUsed } from "../store";
-import { REPO_URL } from "../help";
+import { REPO_URL, SITE_DOCS_URL, SITE_URL } from "../help";
 import { DeviceSettings, buildDeviceYaml, getRoute, loadDeviceSettings, safeId } from "../device";
 import { renderDeviceCard } from "./deviceCard";
 
@@ -137,10 +137,10 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void, d
     h("code", "", hand, `template: ${id()}.json`);
     h("span", "", hand, " — see the ");
     const ex = h("a", "", hand, "example configuration") as HTMLAnchorElement;
-    ex.href = `${REPO_URL}/blob/main/examples/stamp-s3-inmp441-thermomix-tm6.yaml`; ex.target = "_blank"; ex.rel = "noopener";
+    ex.href = `${SITE_URL}/examples/stamp-s3-inmp441-thermomix-tm6.yaml`; ex.target = "_blank"; ex.rel = "noopener";
     h("span", "", hand, " and ");
     const wi = h("a", "", hand, "wiring") as HTMLAnchorElement;
-    wi.href = `${REPO_URL}/blob/main/docs/wiring.md`; wi.target = "_blank"; wi.rel = "noopener";
+    wi.href = `${SITE_DOCS_URL}/wiring.md`; wi.target = "_blank"; wi.rel = "noopener";
     h("span", "", hand, ".");
   }
 

@@ -1,7 +1,10 @@
 // Short in-page explanations; each links to the detailed section in
-// docs/preset_parameters.md on GitHub.
+// docs/preset_parameters.md as published next to the site (same origin as the
+// app, so the links work wherever the app loads).
 export const REPO_URL = "https://github.com/gl0wa/esphome-alarm-sound-detector";
-export const DOCS_URL = `${REPO_URL}/blob/main/docs/preset_parameters.md`;
+export const SITE_URL = "https://gl0wa.github.io/esphome-alarm-sound-detector";
+export const SITE_DOCS_URL = `${SITE_URL}/docs`;
+export const DOCS_URL = `${SITE_DOCS_URL}/preset_parameters.md`;
 
 export interface HelpEntry { text: string; anchor: string }
 

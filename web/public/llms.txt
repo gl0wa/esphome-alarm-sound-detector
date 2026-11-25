@@ -11,6 +11,6 @@
 ## Docs
 
 - [Repository and README](https://github.com/gl0wa/esphome-alarm-sound-detector)
-- [Wiring](https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/wiring.md)
-- [Preset parameters](https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/preset_parameters.md)
-- [Home Assistant](https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/home_assistant.md)
+- [Wiring](https://gl0wa.github.io/esphome-alarm-sound-detector/docs/wiring.md)
+- [Preset parameters](https://gl0wa.github.io/esphome-alarm-sound-detector/docs/preset_parameters.md)
+- [Home Assistant](https://gl0wa.github.io/esphome-alarm-sound-detector/docs/home_assistant.md)

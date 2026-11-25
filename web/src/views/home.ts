@@ -119,7 +119,7 @@ export function renderHome(root: HTMLElement, go: (m: "use" | "create", step?: n
   appl.oninput = () => { appliance = appl.value.trim(); pre.textContent = promptOf(); };
   const links = h("p", "agent-links", c);
   const a1 = h("a", "", links, "Agent guide") as HTMLAnchorElement;
-  a1.href = "https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/agent_guide.md"; a1.target = "_blank"; a1.rel = "noopener";
+  a1.href = guide; a1.target = "_blank"; a1.rel = "noopener";
   h("span", "muted", links, " · ");
   const a2 = h("a", "", links, "asd command-line tool") as HTMLAnchorElement;
   a2.href = "cli/asd.mjs"; a2.setAttribute("download", "asd.mjs");

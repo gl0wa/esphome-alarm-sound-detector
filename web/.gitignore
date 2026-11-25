@@ -3,3 +3,5 @@ dist/
 src/wasm/detector.js
 public/presets/
 public/agent-guide.md
+public/docs/
+public/examples/
