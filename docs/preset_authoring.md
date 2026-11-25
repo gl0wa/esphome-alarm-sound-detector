@@ -32,22 +32,25 @@ The generated firmware keeps all sound on the device: it never sends audio anywh
 The home screen offers two ways to record:
 
 - **Record with the device** (most accurate — the microphone that will listen
-  later). Two extra steps come first:
-  1. **Recording firmware.** The studio generates a temporary firmware (your
-     Device settings plus a `capture_server` block). It is the ONLY firmware
-     that can send sound — to your browser only, only while you press Record,
-     unencrypted over your home Wi-Fi (protected by the key in the QR code).
-  2. **Record on your phone.** Scan the QR code (`http://<device-name>.local/#k=…`;
-     if the phone can't open `.local` names, enter the device's IP address under
-     “Page doesn't open on the phone?”), record the alarm a few times plus
-     everyday background sounds, then tap “Send to preset studio”. The clips
-     arrive in the next step.
-- **Record with a phone or laptop** (quickest, no extra firmware): record in the
-  page or load audio files. The device steps are skipped.
+  later). The first step, **Record with the device**, has two parts on one page:
+  1. **Install the recording firmware.** The studio generates a temporary
+     firmware (your Device settings plus a `capture_server` block). It is the ONLY
+     firmware that can send sound — to your browser only, only while you press
+     Record, unencrypted over your home Wi-Fi (protected by the key in the QR code).
+  2. **Record with your phone.** Scan the QR code (`http://<device-name>.local/#k=…`).
+     Most Android phones can't open `.local` names: enter the device's IP address
+     and scan the second QR code. Record the alarm a few times plus everyday
+     background sounds, then tap “Send to preset studio” — the studio opens in
+     that browser with the clips. (The link also works on a computer on the same
+     Wi-Fi; the device records, the browser is the remote control.)
+- **Record with a phone or laptop** (quickest, no extra firmware): the first step
+  is **Add audio & mark the alarm** — record in the page or load audio files.
+- **Let an AI agent do it**: see [agent_guide.md](agent_guide.md).
 
 Then, in both cases:
 
-1. **Mark the alarm.** Drag across one occurrence on the spectrogram and press
+1. **Mark the alarm** (on the phone/laptop route: *Add audio & mark the alarm*).
+   Drag across one occurrence on the spectrogram and press
    “＋ Example”. The sound length is measured from it automatically.
    Best material: one long recording with the alarm a few times plus everyday
    background — the background teaches the detector what not to react to.

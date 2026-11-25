@@ -73,6 +73,23 @@ to private mode). Optionally share the preset on GitHub.
 
 Details: [docs/preset_authoring.md](docs/preset_authoring.md).
 
+### C. Let your AI agent do it
+
+Coding agents with a terminal (Claude Code, Codex, Gemini CLI, Cursor, GitHub
+Copilot, …) can do all of the above for you: pick a preset or build one from
+your recordings with the `asd` command-line tool, generate the YAML, and tell you
+when to plug in the device or play the alarm. Give your agent this prompt (the
+studio's home page has a copy button):
+
+> Set up an ESPHome alarm sound detector for my *appliance* and connect it to
+> Home Assistant. Follow https://gl0wa.github.io/esphome-alarm-sound-detector/agent-guide.md
+> — use its asd tool, keep my audio recordings on this computer, and ask me
+> before flashing anything or whenever you need me to do something physical.
+
+Instructions for agents: [docs/agent_guide.md](docs/agent_guide.md) (also picked
+up automatically via [AGENTS.md](AGENTS.md), `CLAUDE.md`, `GEMINI.md` and
+`.github/copilot-instructions.md`).
+
 ### Writing the YAML by hand
 
 Prefer to configure everything yourself? Start from
@@ -164,7 +181,8 @@ the alarm is *still ringing* after a configurable delay is included:
   audio capture and Python recorder ([protocol](docs/capture_protocol.md)).
 - `tools/detector/` — Python reference implementation (the specification),
   preset builder and evaluator.
-- `web/` — the browser preset studio (the C++ core compiled to WebAssembly).
+- `web/` — the browser preset studio (the C++ core compiled to WebAssembly) and
+  `web/cli/` — the same pipeline as a command-line tool for agents and scripts.
 - `tests/` — C++/Python equivalence tests, preset validation; run `pytest`.
 - `firmware/` — the reference device configuration used during development.
 

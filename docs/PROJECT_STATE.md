@@ -36,6 +36,13 @@ Private, household-specific operational notes live in `local/PRIVATE_NOTES.md`
    generator with defaults (+ inline presets), QR code, import banner. Verified on the real
    device: 8 s stream at -34 dBFS no drops, abort, busy, lockout, page->studio import of 2 clips.
    Generated YAMLs validated by `esphome config` in CI (examples job).
+8. [x] Agent support (2026-11-25): `asd` command-line tool (web/cli, same TS pipeline + WASM
+   detector, one file published at /cli/asd.mjs): device settings, YAML, record from
+   capture_server, events/groups, similar, auto-tune, test, validate. docs/agent_guide.md
+   (+ AGENTS.md, CLAUDE.md/GEMINI.md imports, copilot-instructions, llms.txt). Studio:
+   route-aware steps, one-click tuning, home page with a third "AI agent" entry point.
+   Verified: smoke test in CI on synthetic beeps; `events` finds the real rice-cooker alarm
+   (5× ~4 kHz, 1 s apart); `record` tested against a simulated device only (not hardware).
 
 ## Decisions
 - ESP-IDF; detector at 16 kHz (TM6 content < 5 kHz); production firmware has no audio

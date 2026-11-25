@@ -13,8 +13,8 @@ import { renderEvaluate } from "./evaluate";
 import { renderExport } from "./exportView";
 
 export const CREATE_STEPS = [
-  "Recording firmware",
-  "Record on your phone",
+  "Record with the device",
+  "(merged into step 0)",
   "Mark the alarm",
   "Find more examples",
   "Build",
@@ -24,7 +24,13 @@ export const CREATE_STEPS = [
 
 /** Internal step indices shown for the current route. */
 function visibleSteps(): number[] {
-  return getRoute() === "file" ? [2, 3, 4, 5, 6] : [0, 1, 2, 3, 4, 5, 6];
+  return getRoute() === "file" ? [2, 3, 4, 5, 6] : [0, 2, 3, 4, 5, 6];
+}
+
+/** Step name; the first step of the phone/laptop route also adds the audio. */
+export function stepName(i: number): string {
+  if (i === 2 && getRoute() === "file") return "Add audio & mark the alarm";
+  return CREATE_STEPS[i];
 }
 
 export function getCreateStep(): number {
@@ -71,11 +77,11 @@ export function renderCreate(
   if (!vis.includes(getCreateStep())) setCreateStep(vis[0]);
   const step = getCreateStep();
   const pos = vis.indexOf(step);
-  h("h2", "", root, `Create a preset · step ${pos + 1} of ${vis.length}: ${CREATE_STEPS[step]}`);
+  h("h2", "", root, `Create a preset · step ${pos + 1} of ${vis.length}: ${stepName(step)}`);
 
   const sub = h("nav", "tabs", root);
   vis.forEach((i, k) => {
-    const b = h("button", i === step ? "tab active" : "tab", sub, `${k + 1} · ${CREATE_STEPS[i]}`);
+    const b = h("button", i === step ? "tab active" : "tab", sub, `${k + 1} · ${stepName(i)}`);
     b.onclick = () => { setCreateStep(i); opts.rerenderCreate(); };
   });
 
@@ -84,66 +90,76 @@ export function renderCreate(
 
   if (step === 0) {
     note(body, "A temporary firmware for recording. It is the only firmware that can send sound: to your browser, " +
-      "only while you press Record, over your home Wi-Fi (protected by the key in the next step's QR code). " +
+      "only while you press Record, over your home Wi-Fi (protected by the key in the QR code below). " +
       "The last step gives you the normal, private firmware again.");
     const skip = h("p", "note", body, "Recording with a phone or laptop, or loading audio files instead? ");
-    const sk = h("a", "", skip, "Skip the device steps →") as HTMLAnchorElement;
+    const sk = h("a", "", skip, "Skip the device →") as HTMLAnchorElement;
     sk.href = "#"; sk.onclick = (e) => { e.preventDefault(); setRoute("file"); go(2); };
+
+    h("h3", "", body, "1. Install the recording firmware");
     renderDeviceCard(body, dev, () => renderCreate(root, s, dev, opts));
     const yaml = buildDeviceYaml(dev, [] as YamlPreset[], true);
-    const pre = h("pre", "snippet", body, yaml);
+    h("pre", "snippet", body, yaml);
     const row = h("div", "row", body);
     const msg = h("span", "muted", row, "");
-    button(row, "Copy recording YAML", async () => {
+    button(row, "Copy YAML", async () => {
       try { await navigator.clipboard.writeText(yaml); msg.textContent = "Copied."; }
       catch { msg.textContent = "Copy failed; select the text above instead."; }
     }, "primary");
     button(row, "Download YAML", () => download(`${dev.deviceName}-recording.yaml`, yaml));
-    void pre;
     const ol = h("ol", "steps-list", body);
     h("li", "", ol, "In the ESPHome dashboard: New device → paste this YAML (or replace the YAML of the existing device).");
     h("li", "", ol, "Make sure ESPHome's secrets contain wifi_ssid and wifi_password.");
     h("li", "", ol, "Install (the first install is over USB, later ones over Wi-Fi).");
-    navRow(body, undefined, { label: CREATE_STEPS[1], go: () => go(1) });
-    return;
-  }
 
-  if (step === 1) {
-    note(body, "Scan with your phone. On the device's page, record the alarm a few times plus some everyday " +
-      "background (talking, dishes, other appliances), then tap “Send to preset studio” — the clips arrive in the next step.");
-    const link0 = captureLink(dev.deviceName, dev.captureKey, loadIp());
-    const qrBox = h("div", "qr-box", body);
-    renderQr(qrBox, link0);
-    const linkRow = h("p", "", body);
-    const a = h("a", "", linkRow, link0) as HTMLAnchorElement;
-    a.href = link0;
-    a.target = "_blank";
-    a.rel = "noopener";
-    const row = h("div", "row", body);
-    button(row, "Copy link", async () => {
-      try { await navigator.clipboard.writeText(a.href); } catch { /* ignore */ }
-    });
-    const ipDet = h("details", "", body);
-    h("summary", "", ipDet, "Page doesn't open on the phone?");
-    note(ipDet, "Some phones (often Android) can't open .local addresses. Enter the device's IP address " +
-      "(shown in the ESPHome dashboard or your router) and scan the new QR code.");
-    const ipWrap = h("label", "field", ipDet);
+    h("h3", "", body, "2. Record with your phone");
+    note(body, "Once the device runs this firmware, scan the code with your phone (or open the link on a computer on the same Wi-Fi) — " +
+      "the device records, your browser is the remote control. Record the alarm a few times plus some everyday background " +
+      "(talking, dishes, other appliances), then tap “Send to preset studio”: the studio opens in that browser with your clips, " +
+      "at the next step.");
+    const qrs = h("div", "qr-row", body);
+    const qrCard = (title: string, link: string) => {
+      const c = h("div", "qr-card", qrs);
+      h("strong", "", c, title);
+      const box = h("div", "qr-box", c);
+      renderQr(box, link);
+      const a = h("a", "qr-link", c, link) as HTMLAnchorElement;
+      a.href = link; a.target = "_blank"; a.rel = "noopener";
+      return c;
+    };
+    qrCard("Usually works (iPhone, computers)", captureLink(dev.deviceName, dev.captureKey, ""));
+    const ipCard = h("div", "qr-card", qrs);
+    h("strong", "", ipCard, "If the page doesn't open (most Android phones)");
+    note(ipCard, "Android often can't open .local names. Enter the device's IP address (ESPHome dashboard or your router shows it):");
+    const ipWrap = h("label", "field", ipCard);
     h("span", "", ipWrap, "Device IP address");
     const ip = h("input", "", ipWrap) as HTMLInputElement;
     ip.placeholder = "e.g. 192.168.1.42";
+    ip.inputMode = "decimal";
     ip.value = loadIp();
-    ip.onchange = () => {
-      try { localStorage.setItem(IP_KEY, ip.value.trim()); } catch { /* ignore */ }
-      const link = captureLink(dev.deviceName, dev.captureKey, ip.value);
-      a.href = link;
-      a.textContent = link;
-      renderQr(qrBox, link);
+    const ipQr = h("div", "", ipCard);
+    const drawIp = () => {
+      ipQr.innerHTML = "";
+      const v = ip.value.trim();
+      if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(v)) {
+        if (v) note(ipQr, "Enter an address like 192.168.1.42.");
+        return;
+      }
+      const link = captureLink(dev.deviceName, dev.captureKey, v);
+      const box = h("div", "qr-box", ipQr);
+      renderQr(box, link);
+      const a = h("a", "qr-link", ipQr, link) as HTMLAnchorElement;
+      a.href = link; a.target = "_blank"; a.rel = "noopener";
     };
-    navRow(body, { label: CREATE_STEPS[0], go: () => go(0) }, { label: `Next: ${CREATE_STEPS[2]}`, go: () => go(2) });
-    return;
+    ip.oninput = () => {
+      try { localStorage.setItem(IP_KEY, ip.value.trim()); } catch { /* ignore */ }
+      drawIp();
+    };
+    drawIp();
   }
 
-  if (step === 2) renderRecordings(body, s, { refresh: opts.refresh });
+  if (step === 0) { /* rendered above */ }
+  else if (step === 2) renderRecordings(body, s, { refresh: opts.refresh });
   else if (step === 3) renderExamples(body, s, opts.refresh);
   else if (step === 4) renderBuild(body, s, opts.refresh);
   else if (step === 5) renderEvaluate(body, s, opts.refresh);
@@ -160,8 +176,8 @@ export function renderCreate(
   const prev = vis[pos - 1], next = vis[pos + 1];
   navRow(
     body,
-    prev !== undefined ? { label: CREATE_STEPS[prev], go: () => go(prev) } : undefined,
-    next !== undefined ? { label: `Next: ${CREATE_STEPS[next]}`, go: () => go(next) } : undefined,
+    prev !== undefined ? { label: stepName(prev), go: () => go(prev) } : undefined,
+    next !== undefined ? { label: `Next: ${stepName(next)}`, go: () => go(next) } : undefined,
   );
 }
 

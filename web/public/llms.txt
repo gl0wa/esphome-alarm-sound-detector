@@ -1,0 +1,16 @@
+# ESPHome Alarm Sound Detector
+
+> An ESPHome external component (ESP32-S3 + INMP441 microphone) that recognises an appliance's alarm sound on the device and reports it to Home Assistant, plus a browser preset studio and a command-line tool (asd) to create presets from recordings.
+
+## For AI agents
+
+- [Agent guide](https://gl0wa.github.io/esphome-alarm-sound-detector/agent-guide.md): everything the studio does, from a terminal — ready-made presets, recording with the device, building/tuning/testing a preset, generating the ESPHome YAML. Ground rules: household audio stays local, ask the user for physical actions.
+- [asd command-line tool](https://gl0wa.github.io/esphome-alarm-sound-detector/cli/asd.mjs): one file, Node.js 20+, `node asd.mjs help`.
+- [Preset catalog](https://gl0wa.github.io/esphome-alarm-sound-detector/presets/index.json)
+
+## Docs
+
+- [Repository and README](https://github.com/gl0wa/esphome-alarm-sound-detector)
+- [Wiring](https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/wiring.md)
+- [Preset parameters](https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/preset_parameters.md)
+- [Home Assistant](https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/home_assistant.md)

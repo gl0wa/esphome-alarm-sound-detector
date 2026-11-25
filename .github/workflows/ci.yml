@@ -71,6 +71,11 @@ jobs:
         run: |
           npm ci
           npm test
+      - name: Command-line tool for agents (bundle + end-to-end smoke test)
+        working-directory: web
+        run: |
+          npm run build:cli
+          sh cli/smoke.sh
 
   firmware:
     runs-on: ubuntu-latest

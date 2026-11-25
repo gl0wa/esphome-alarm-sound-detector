@@ -4,6 +4,7 @@ import { SR } from "../const";
 import { button, fmtT, h, note } from "../helpers";
 import { Recording, State, uid } from "../store";
 import { measureSoundLength } from "../pipeline";
+import { getRoute } from "../device";
 import { type Region, SpecView, type SpecViewState } from "../widgets";
 
 export interface RecCallbacks {
@@ -13,7 +14,10 @@ export interface RecCallbacks {
 export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) {
   root.innerHTML = "";
   const has = s.recordings.length > 0;
-  if (!has) {
+  if (!has && getRoute() === "device") {
+    h("p", "instruction", root, "No clips in this browser yet. “Send to preset studio” on the device's page opens the studio " +
+      "with the clips in the browser you recorded with — continue there. You can also load audio files here.");
+  } else if (!has) {
     note(root, "Best: one long recording with the alarm a few times, plus everyday background — talking, dishes, " +
       "other appliances. The background is what teaches the detector what NOT to react to.");
   }

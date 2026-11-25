@@ -12,3 +12,14 @@ for (const f of readdirSync(src)) {
   copyFileSync(join(src, f), join(dst, f));
   console.log("copied", f);
 }
+
+// The agent guide, published next to the site (relative links → GitHub URLs) so
+// agents without a clone can read it: /agent-guide.md (+ /llms.txt points to it).
+{
+  const { readFileSync, writeFileSync } = await import("fs");
+  const blob = "https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/";
+  const md = readFileSync(join(root, "docs", "agent_guide.md"), "utf8")
+    .replace(/\]\((?!https?:|#|mailto:)([^)]+)\)/g, (_, p) => `](${new URL(p, blob).href})`);
+  writeFileSync(join(root, "web", "public", "agent-guide.md"), md);
+  console.log("copied agent_guide.md -> public/agent-guide.md");
+}

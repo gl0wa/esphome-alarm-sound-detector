@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run build:wasm && npm run copy-presets && vite build",
+    "build": "npm run build:wasm && npm run copy-presets && vite build && npm run build:cli",
     "preview": "vite preview",
     "build:wasm": "sh wasm/build.sh src/wasm",
     "copy-presets": "node scripts/copy-presets.mjs",
     "test": "npm run build:wasm && npm run copy-presets && vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:cli": "vite build -c vite.cli.config.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.10",
