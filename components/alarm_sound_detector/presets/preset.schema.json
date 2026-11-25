@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/thermomix-alert-detector/preset.schema.json",
+  "$id": "https://github.com/gl0wa/esphome-alarm-sound-detector/raw/main/components/alarm_sound_detector/presets/preset.schema.json",
   "title": "alarm_sound_detector preset (format v2)",
   "description": "One appliance alarm sound: spectral template plus the detection parameters tuned for it.",
   "type": "object",

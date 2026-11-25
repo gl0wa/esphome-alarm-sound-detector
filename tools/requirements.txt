@@ -4,5 +4,6 @@ numpy
 soundfile
 # Test-only:
 pytest
+jsonschema
 scipy
 pyyaml

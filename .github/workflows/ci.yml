@@ -21,6 +21,27 @@ jobs:
       - name: Unit, protocol, preset and C++/Python equivalence tests
         run: python -m pytest -q
 
+  presets:
+    name: Preset validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: pip install -r tools/requirements.txt "esphome==2026.11.0"
+      - name: Schema, consistency and plausibility checks
+        run: python tools/presets/validate.py
+      - name: Catalog index is up to date
+        run: |
+          python tools/presets/build_index.py --check || {
+            echo "::error file=components/alarm_sound_detector/presets/index.json::The preset catalog is out of date. Run: python tools/presets/build_index.py and commit index.json (maintainers can do this for you)."
+            exit 1
+          }
+      - name: Every preset loads in ESPHome
+        run: tools/presets/check_esphome.sh
+
   web:
     runs-on: ubuntu-latest
     steps:

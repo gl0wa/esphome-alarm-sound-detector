@@ -58,3 +58,21 @@ validating.
 4. Add `aliases` if the sound already has a name users know, fill in
    `provenance`, run `tools/presets/build_index.py`, and add the preset +
    index to the same commit.
+
+## Automated checks
+
+Every push and pull request runs the **Preset validation** CI job:
+
+1. `python tools/presets/validate.py` — full JSON Schema validation, the
+   component's own loader checks, file name == `id`, unique ids/aliases,
+   template sanity (quantisation, size ≤ 40 KB, length ≤ 10 s) and timing
+   consistency (`release_s` > `period_s`, `refractory_s` < `period_s`,
+   tolerance < period/2). Problems appear as annotations on the pull request;
+   thin provenance (fewer than 3 examples, no `tested_against`) only warns.
+2. `python tools/presets/build_index.py --check` — `index.json` is up to date
+   (maintainers regenerate it if a contribution doesn't).
+3. `tools/presets/check_esphome.sh` — every preset loads through ESPHome's own
+   config validation, using the example device configuration.
+
+Run them locally before opening a pull request:
+`pip install -r tools/requirements.txt esphome && python tools/presets/validate.py`.
