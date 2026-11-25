@@ -21,6 +21,28 @@ jobs:
       - name: Unit, protocol, preset and C++/Python equivalence tests
         run: python -m pytest -q
 
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Python dependencies (synthetic reference fixtures)
+        run: pip install -r tools/requirements.txt
+      # Pinned to match the local toolchain (brew emscripten 7.0.1).
+      - uses: mymindstorm/setup-emsdk@v1
+        with:
+          version: "7.0.1"
+      - name: Preset studio tests (builds WASM, vitest incl. WASM-vs-ref.py)
+        working-directory: web
+        run: npm test
+
   firmware:
     runs-on: ubuntu-latest
     strategy:

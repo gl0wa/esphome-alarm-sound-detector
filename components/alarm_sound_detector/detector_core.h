@@ -57,6 +57,11 @@ class StreamingDetector {
   using Listener = std::function<void(const Event &)>;
   // Invoked for every scored frame (frame count 1-based, score = NCC).
   using FrameListener = std::function<void(uint32_t frame, float score)>;
+  using FloatFrameListener = std::function<void(const float *db_above_floor, uint16_t bins)>;
+  // Optional tap delivering each frame's float dB-above-floor vector (length
+  // = template_bins_) before quantisation. Unset by default; used by the
+  // preset-studio WebAssembly build for template building. No effect on
+  // detection when unset.
 
   StreamingDetector() = default;
   StreamingDetector(const StreamingDetector &) = delete;
@@ -74,6 +79,9 @@ class StreamingDetector {
   bool is_ready() const { return ready_; }
   void set_listener(Listener listener) { listener_ = std::move(listener); }
   void set_frame_listener(FrameListener listener) { frame_listener_ = std::move(listener); }
+  void set_float_frame_listener(FloatFrameListener listener) {
+    float_frame_listener_ = std::move(listener);
+  }
 
   // Feed audio in arbitrary chunk sizes; frames are assembled internally with
   // HOP overlap. float samples are in nominal [-1, 1] (scale cancels out:
@@ -103,6 +111,7 @@ class StreamingDetector {
 
   Listener listener_;
   FrameListener frame_listener_;
+  FloatFrameListener float_frame_listener_;
   const int8_t *tmpl_ = nullptr;
   uint16_t template_frames_ = 0;  // W
   uint16_t template_bins_ = 0;    // bins per frame (bin_hi - bin_lo + 1)
@@ -132,6 +141,7 @@ class StreamingDetector {
   std::vector<uint8_t> history_;     // circular W x template_bins_ quantised history
   std::vector<float> frame_re_;      // FFT scratch
   std::vector<float> frame_im_;      // FFT scratch
+  std::vector<float> float_frame_;   // scratch for the float feature tap (size = template_bins_)
 
   uint32_t frames_seen_ = 0;  // n in ref.py (1-based frame count)
   float last_score_ = 0.0f;

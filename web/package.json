@@ -1,0 +1,22 @@
+{
+  "name": "preset-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run build:wasm && npm run copy-presets && vite build",
+    "preview": "vite preview",
+    "build:wasm": "sh wasm/build.sh src/wasm",
+    "copy-presets": "node scripts/copy-presets.mjs",
+    "test": "npm run build:wasm && npm run copy-presets && vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.10",
+    "ajv": "^8.17.1",
+    "typescript": "~5.6.3",
+    "vite": "^6.3.5",
+    "vitest": "^2.1.8"
+  }
+}

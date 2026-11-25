@@ -75,6 +75,7 @@ bool StreamingDetector::begin(const int8_t *template_data, uint16_t frames, uint
   history_.assign(static_cast<size_t>(frames) * bins, 0);
   frame_re_.assign(DET_N_FFT, 0.0f);
   frame_im_.assign(DET_N_FFT, 0.0f);
+  float_frame_.assign(bins, 0.0f);
 
   tmpl_ = template_data;
   template_frames_ = frames;
@@ -201,6 +202,7 @@ void StreamingDetector::process_frame_() {
   const uint16_t n_bins = template_bins_;
   // First frame initialises the floor (ref.py: floor = db[0].copy()).
   const bool first = (frames_seen_ == 0);
+  const bool tap = static_cast<bool>(float_frame_listener_);
   for (uint16_t b = 0; b < n_bins; b++) {
     const uint16_t k = static_cast<uint16_t>(bin_lo_ + b);
     const double p = static_cast<double>(re[k]) * re[k] + static_cast<double>(im[k]) * im[k];
@@ -213,6 +215,9 @@ void StreamingDetector::process_frame_() {
     }
     // quantize_feat: clip(floor(dB/0.5 + 0.5), 0, 255).
     const float above = db - floor_db_[b];
+    if (tap) {
+      float_frame_[b] = above;
+    }
     float q = std::floor(above / DET_FEAT_STEP_DB + 0.5f);
     if (q < 0.0f) {
       q = 0.0f;
@@ -223,6 +228,9 @@ void StreamingDetector::process_frame_() {
   }
   frames_seen_++;
 
+  if (tap) {
+    float_frame_listener_(float_frame_.data(), n_bins);
+  }
   if (frames_seen_ < template_frames_) {
     return;
   }

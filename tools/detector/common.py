@@ -20,7 +20,10 @@ def load_16k(path: Path) -> np.ndarray:
         from math import gcd
         g = gcd(sr, ref.SR)
         x = resample_poly(x, ref.SR // g, sr // g)
-    return x.astype(np.float32)
+    # Model the device input: the detector consumes 16-bit PCM, whose quantisation
+    # noise sets the floor in quiet bins. Building templates from full-precision
+    # audio would shift the dB-above-floor features (the browser studio does the same).
+    return (np.clip(np.round(x * 32768), -32768, 32767) / 32768).astype(np.float32)
 
 
 def load_session(session_dir: Path) -> tuple[np.ndarray, dict]:
