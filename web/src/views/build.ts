@@ -55,8 +55,7 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
   repSel.value = s.repeating ? "rep" : "single";
   const perLabel = h("span", "muted", root, "");
   button(shRow, "Estimate repetition", () => {
-    const times = timesInFirstRecording(s);
-    const r = estimatePeriod(times);
+    const r = estimatePeriod(timesPerRecording(s));
     perLabel.textContent = r.text;
     if (r.period !== null) {
       s.repeating = true; repSel.value = "rep";
@@ -179,9 +178,8 @@ function bandSuggestion(s: State): { loHz: number; hiHz: number; text: string } 
   return suggestBand(exMean, bg, bins, s.band.binLo);
 }
 
-function timesInFirstRecording(s: State): number[] {
-  const recId = s.examples[0]?.recId;
-  return s.examples.filter((e) => e.recId === recId).map((e) => (e.t0 + e.t1) / 2);
+function timesPerRecording(s: State): number[][] {
+  return s.recordings.map((r) => s.examples.filter((e) => e.recId === r.id).map((e) => (e.t0 + e.t1) / 2));
 }
 
 function thresholdSuggestion(s: State) {

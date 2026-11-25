@@ -105,17 +105,37 @@ export function suggestBand(
 }
 
 /** Estimate the repetition period from example times within one recording. */
-export function estimatePeriod(timesS: number[]): { period: number | null; text: string } {
-  if (timesS.length < 3) {
-    return { period: null, text: "Fewer than 3 examples in one recording — defaulting to single-sound mode." };
+/**
+ * Estimate the repetition period from example centre times, grouped per
+ * recording. Robust to (a) several alarm episodes in one recording (long gaps
+ * between them are ignored) and (b) a missed repetition (a gap of 2 periods).
+ */
+export function estimatePeriod(groups: number[][]): { period: number | null; text: string } {
+  const diffs: number[] = [];
+  for (const g of groups) {
+    const t = [...g].sort((a, b) => a - b);
+    for (let i = 1; i < t.length; i++) if (t[i] - t[i - 1] > 0.3) diffs.push(t[i] - t[i - 1]);
   }
-  const t = [...timesS].sort((a, b) => a - b);
-  const diffs = t.slice(1).map((v, i) => v - t[i]);
-  const med = diffs.sort((a, b) => a - b)[Math.floor(diffs.length / 2)];
-  const mean = diffs.reduce((a, b) => a + b, 0) / diffs.length;
-  const sd = Math.sqrt(diffs.reduce((a, b) => a + (b - mean) ** 2, 0) / diffs.length);
-  if (med > 0.4 && sd / med < 0.2) {
-    return { period: Math.round(med * 1000) / 1000, text: `Examples repeat about every ${med.toFixed(2)} s — suggesting repeating mode.` };
+  if (diffs.length < 2) {
+    return { period: null, text: "Fewer than 3 examples of one alarm in a recording — defaulting to single-sound mode. Accept more repetitions in step 2 if the sound repeats." };
+  }
+  diffs.sort((a, b) => a - b);
+  // Try each spacing as the base period; keep the one explaining most spacings
+  // as 1× or 2× the period (larger gaps = between episodes, not counted).
+  let best: { period: number; n: number; total: number } | null = null;
+  for (const base of diffs) {
+    let sum = 0, n = 0, total = 0;
+    for (const d of diffs) {
+      if (d > 2.5 * base) continue;
+      total++;
+      const k = Math.round(d / base);
+      if ((k === 1 || k === 2) && Math.abs(d - k * base) <= 0.12 * k * base) { sum += d / k; n++; }
+    }
+    if (n >= 2 && n >= 0.75 * total && (!best || n > best.n)) best = { period: sum / n, n, total };
+  }
+  if (best) {
+    const per = Math.round(best.period * 1000) / 1000;
+    return { period: per, text: `Examples repeat about every ${per.toFixed(2)} s (${best.n} spacings) — suggesting repeating mode.` };
   }
   return { period: null, text: "Example spacing is irregular — suggesting single-sound mode." };
 }

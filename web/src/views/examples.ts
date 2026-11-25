@@ -1,12 +1,10 @@
 // Step 2: examples, "find similar" (provisional template + firmware NCC scan).
 import { FPS } from "../const";
-import { runDetector } from "../dsp";
-import { button, fmtT, h, note } from "../helpers";
+import { button, field, fmtT, h, note } from "../helpers";
 import { Candidate, State, uid } from "../store";
 import { helpIcon } from "../help";
-import { exampleFrameRange, quantizeTemplate } from "../template";
 import { player } from "./recordings";
-import { getFeatures } from "../dsp";
+import { findSimilar } from "../similar";
 
 export function renderExamples(root: HTMLElement, s: State, refresh: () => void) {
   root.innerHTML = "";
@@ -42,6 +40,8 @@ export function renderExamples(root: HTMLElement, s: State, refresh: () => void)
   const seed = s.examples.find((e) => e.id === seedId) ?? s.examples[0];
 
   const row = h("div", "row", root);
+  const durInp = field(row, "sound length (s)", s.duration, { type: "number", step: "0.05", help: "duration" });
+  durInp.onchange = () => { s.duration = Math.max(0.2, Math.min(5, parseFloat(durInp.value) || s.duration)); };
   const thrInp = h("input", "", row) as HTMLInputElement;
   thrInp.type = "number"; thrInp.step = "0.05"; thrInp.value = "0.35";
   thrInp.title = "candidate score floor";
@@ -105,51 +105,4 @@ export function renderExamples(root: HTMLElement, s: State, refresh: () => void)
     }
   }
   void W;
-}
-
-/** Scan all recordings with a provisional template from the seed example. */
-export function findSimilar(s: State, seedId: string, floor: number) {
-  const seed = s.examples.find((e) => e.id === seedId);
-  if (!seed) throw new Error("seed example not found");
-  const rec = s.recordings.find((r) => r.id === seed.recId);
-  if (!rec) throw new Error("seed recording gone");
-  const { binLo, binHi } = s.band;
-  const bins = binHi - binLo + 1;
-  const W = Math.round(s.duration * FPS);
-  const f = getFeatures(rec.pcm, binLo, binHi);
-  if (f.frames < W + 16) throw new Error("seed recording too short for the template duration");
-  const { f0 } = exampleFrameRange(seed.t0, seed.t1, f.frames, W);
-  const win = f.data.slice(f0 * bins, (f0 + W) * bins);
-  const q = quantizeTemplate(win);
-  s.candidates = [];
-  const peakWin = Math.round(0.4 * FPS), refr = Math.round(1.5 * FPS);
-  for (const r of s.recordings) {
-    const { scores, firstFrame } = runDetector(r.pcm, q, W, bins, {
-      threshold: 2, near_threshold: 1.5, min_repetitions: 255,
-      period_s: 3.125, period_tolerance_s: 0.25, refractory_s: 1.5, release_s: 7.25,
-    }, s.band);
-    // Peak-pick above the floor (same shape as the firmware candidate logic).
-    let best = -1, bestI = -1, lastKept = -1e9;
-    const flush = (endI: number) => {
-      if (bestI >= 0 && endI - bestI >= peakWin) {
-        const frame = firstFrame + bestI; // 1-based end frame of the match
-        const t1 = frame / FPS, t0 = t1 - W / FPS;
-        const isSeed = r.id === seed.recId && Math.abs(t0 - (f0 / FPS)) < 0.5;
-        if (!isSeed && bestI - lastKept >= refr) {
-          lastKept = bestI;
-          s.candidates.push({ id: uid(), recId: r.id, t0: Math.max(0, t0), t1, score: best, status: "pending" });
-        }
-        best = -1; bestI = -1;
-      }
-    };
-    for (let i = 0; i < scores.length; i++) {
-      const v = scores[i];
-      if (v >= floor && i - lastKept >= refr) {
-        if (v > best) { best = v; bestI = i; }
-      }
-      if (bestI >= 0 && i - bestI >= peakWin) flush(i);
-    }
-    flush(scores.length);
-  }
-  s.candidates.sort((a, b) => b.score - a.score);
 }

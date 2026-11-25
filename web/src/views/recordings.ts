@@ -137,6 +137,11 @@ export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) 
   const keepView = () => { viewState.set(rec.id, spec.getView()); };
   function markSelection() {
     if (!pendingSel) return;
+    // The first marked example sets the sound length (template duration);
+    // it can be changed in step 2 or 3.
+    if (!s.examples.length) {
+      s.duration = Math.max(0.2, Math.min(5, Math.round((pendingSel.t1 - pendingSel.t0) * 20) / 20));
+    }
     s.examples.push({ id: uid(), recId: rec.id, t0: pendingSel.t0, t1: pendingSel.t1 });
     pendingSel = null;
     keepView();

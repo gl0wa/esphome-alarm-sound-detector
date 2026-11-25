@@ -76,9 +76,12 @@ Why not the whole beep sequence as one example:
 
 For fast beeps:
 
-1. Mark one beep (centre the selection on it), set **sound length** to about one
-   beep, then run “Find similar” and accept every beep.
-2. “Estimate repetition” reads the period from the spacing of your examples and
+1. Mark one beep (centre the selection on it, a little margin is fine). The first
+   example you mark sets the **sound length** (also editable next to “Find
+   similar”); then run “Find similar” and accept every beep.
+2. “Estimate repetition” reads the period from the spacing of your examples (it
+   needs at least 3 accepted repetitions of one alarm; gaps between separate
+   alarms and a single missed repetition are ignored) and
    also sets *ignore re-matches for* (refractory) to 0.6 × period. Refractory
    must be shorter than the period, otherwise every other beep is ignored.
 3. Choose **repetitions before alarm** below the number of beeps the appliance
