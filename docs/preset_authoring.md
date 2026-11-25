@@ -28,8 +28,11 @@ The generated firmware keeps all sound on the device: it never sends audio anywh
 
 ## Create a preset for your appliance
 
-A guided stepper wraps the classic Record → Examples → Build → Evaluate → Export
-flow (steps 3–7 below — unchanged in behaviour), with two recording steps first:
+The home screen offers two ways to record. **Record with the device** starts at
+step 1 below (most accurate: the microphone that will listen later). **Record or
+load audio** (a phone, laptop or audio files; no extra firmware) starts at
+step 3. A guided stepper wraps the Record → Examples → Build → Evaluate → Export
+flow (steps 3–7), with two device-recording steps first:
 
 1. **Install the recording firmware.** The studio generates it from your Device
    settings plus a `capture_server` block. It is temporary, and it is the ONLY
