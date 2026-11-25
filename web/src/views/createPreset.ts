@@ -89,9 +89,8 @@ export function renderCreate(
   const go = (i: number) => { setCreateStep(i); opts.rerenderCreate(); window.scrollTo({ top: 0, behavior: "smooth" }); };
 
   if (step === 0) {
-    note(body, "A temporary firmware for recording. It is the only firmware that can send sound: to your browser, " +
-      "only while you press Record, over your home Wi-Fi (protected by the key in the QR code below). " +
-      "The last step gives you the normal, private firmware again.");
+    note(body, "A temporary firmware for recording — the only one that can send sound, and only while you record " +
+      "(over your home network, protected by the key in the QR code). The last step installs the normal, private firmware again.");
     const skip = h("p", "note", body, "Recording with a phone or laptop, or loading audio files instead? ");
     const sk = h("a", "", skip, "Skip the device →") as HTMLAnchorElement;
     sk.href = "#"; sk.onclick = (e) => { e.preventDefault(); setRoute("file"); go(2); };
@@ -115,11 +114,11 @@ export function renderCreate(
     h("summary", "", yd, "Show the YAML");
     h("pre", "snippet", yd, yaml);
 
-    h("h3", "", body, "2. Record with your phone");
-    note(body, "Once the device runs this firmware, scan the code with your phone (or open the link on a computer on the same Wi-Fi) — " +
-      "the device records, your browser is the remote control. Record the alarm a few times plus some everyday background " +
-      "(talking, dishes, other appliances), then tap “Send to preset studio”: the studio opens in that browser with your clips, " +
-      "at the next step.");
+    h("h3", "", body, "2. Record through the device — from your phone or computer");
+    const ul = h("ul", "compact-list", body);
+    h("li", "", ul, "The ESP32's microphone records; your phone or computer browser only starts, stops and collects the clips.");
+    h("li", "", ul, "Put the device where it will finally listen — same room, same distance to the appliance.");
+    h("li", "", ul, "Open the page below, record the alarm a few times plus some everyday background, then press “Send to preset studio”.");
     const qrs = h("div", "qr-row", body);
     const qrCard = (title: string, link: string) => {
       const c = h("div", "qr-card", qrs);
@@ -130,7 +129,7 @@ export function renderCreate(
       a.href = link; a.target = "_blank"; a.rel = "noopener";
       return c;
     };
-    qrCard("Usually works (iPhone, computers)", captureLink(dev.deviceName, dev.captureKey, ""));
+    qrCard("Computer or iPhone: open the link or scan", captureLink(dev.deviceName, dev.captureKey, ""));
     const ipCard = h("div", "qr-card", qrs);
     h("strong", "", ipCard, "If the page doesn't open (most Android phones)");
     note(ipCard, "Android often can't open .local names. Enter the device's IP address (ESPHome dashboard or your router shows it):");

@@ -44,6 +44,14 @@ Private, household-specific operational notes live in `local/PRIVATE_NOTES.md`
    Verified: smoke test in CI on synthetic beeps; `events` finds the real rice-cooker alarm
    (5× ~4 kHz, 1 s apart); `record` tested against a simulated device only (not hardware).
 
+9. [x] Hardware generalised (2026-11-25): board/microphone presets in the studio and `asd`
+   (stamp-s3, generic i2s, generic pdm, cores3 [ES7210], xiao-s3-sense, atom-echo); YAML for each
+   validated by `esphome config` in CI; examples/m5stack-cores3-thermomix-tm6.yaml.
+   CoreS3 SE verified on hardware: recording firmware (-35 dBFS room, -16 dBFS test beeps),
+   agent test ride (OpenCode/Muse Spark 1.3) via docs/agent_guide.md end to end: preset margin
+   +0.52, on-device repetitions 0.74-0.84, "Alarm started", no false alarm in 35 s silence.
+   Device left running the final test-ride firmware ("testride-detector"). Other presets untested.
+
 ## Decisions
 - ESP-IDF; detector at 16 kHz (TM6 content < 5 kHz); production firmware has no audio
   egress, capture is dev-only.

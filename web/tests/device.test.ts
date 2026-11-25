@@ -77,3 +77,20 @@ describe("device settings", () => {
     expect(captureLink("kitchen-sound-detector", "K", "192.168.1.42")).toBe("http://192.168.1.42/#k=K");
   });
 });
+
+describe("hardware presets", () => {
+  it("migrates the old 'other' board to the generic I2S preset and keeps custom pins", async () => {
+    const { normalizeDevice } = await import("../src/device");
+    const d = normalizeDevice({ deviceName: "x", board: "other", sck: "GPIO4", ws: "GPIO5", sd: "GPIO6", channel: "right", apiKey: "k", captureKey: "c" });
+    expect(d.board).toBe("i2s");
+    expect([d.sck, d.ws, d.sd, d.channel]).toEqual(["GPIO4", "GPIO5", "GPIO6", "right"]);
+  });
+  it("fixed presets ignore stored pins", async () => {
+    const { normalizeDevice, buildDeviceYaml } = await import("../src/device");
+    const d = normalizeDevice({ board: "cores3", sck: "GPIO1" });
+    expect(d.sck).toBe("GPIO34");
+    const y = buildDeviceYaml(d, [], true);
+    expect(y).toContain("platform: es7210");
+    expect(y).toContain("board: m5stack-cores3");
+  });
+});

@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { buildDeviceYaml, defaultDeviceSettings } from "../src/device";
+import { applyHardware, buildDeviceYaml, defaultDeviceSettings, HARDWARE } from "../src/device";
 import { personalPresetDoc, validatePreset } from "../src/preset";
 import { bandFromHz, DEFAULT_PARAMS } from "../src/const";
 
@@ -25,6 +25,10 @@ const samples: Record<string, string> = {
   "studio-personal-preset": buildDeviceYaml(dev, [
     { id: "my_appliance", ref: null, doc: personal, label: "My appliance" },
   ], false),
+  ...Object.fromEntries(HARDWARE.map((hw) => [`studio-hw-${hw.id}`,
+    buildDeviceYaml(applyHardware(dev, hw.id), [{ id: "thermomix_tm6", ref: "vorwerk_thermomix_tm6_alarm", label: "Thermomix TM6" }], hw.id === "cores3")])),
+  "studio-hw-pdm-esp32": buildDeviceYaml({ ...applyHardware(dev, "pdm"), chip: "esp32", boardId: "esp32dev", ws: "GPIO26", sd: "GPIO25" },
+    [{ id: "thermomix_tm6", ref: "vorwerk_thermomix_tm6_alarm", label: "Thermomix TM6" }], false),
   "studio-inline-preset": buildDeviceYaml(dev, [
     { id: "my_preset", ref: null, doc: { ...tm6, id: "my_preset", aliases: [] }, label: "Rice cooker" },
   ], false),

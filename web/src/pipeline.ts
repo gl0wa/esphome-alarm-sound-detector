@@ -59,6 +59,8 @@ export function thresholdSuggestion(s: State) {
   // around the accepted examples, negatives = everything else.
   const W = s.template.frames;
   let minPos = Infinity, maxNeg = -Infinity;
+  let maxNegAt: { recId: string; t0: number; t1: number } | null = null;
+  let minPosAt: { recId: string; t: number } | null = null;
   for (const r of s.recordings) {
     const { scores, firstFrame } = runDetector(r.pcm, s.template.q, W, s.template.bins, {
       ...s.params, threshold: 2, near_threshold: 1.5, min_repetitions: 255,
@@ -67,14 +69,14 @@ export function thresholdSuggestion(s: State) {
     const expected = s.examples.filter((e) => e.recId === r.id).map((e) => endT(e.t0, e.t1));
     const ignore = s.candidates.filter((c) => c.recId === r.id && c.status === "pending").map((c) => endT(c.t0, c.t1));
     const r2 = suggestThresholds(scores, firstFrame, expected, W, ignore, s.params.refractory_s);
-    if (expected.length && r2.minPos < minPos) minPos = r2.minPos;
-    if (r2.maxNeg > maxNeg) maxNeg = r2.maxNeg;
+    if (expected.length && r2.minPos < minPos) { minPos = r2.minPos; minPosAt = { recId: r.id, t: r2.minPosT - W / FPS / 2 }; }
+    if (r2.maxNeg > maxNeg) { maxNeg = r2.maxNeg; maxNegAt = { recId: r.id, t0: r2.maxNegT - W / FPS, t1: r2.maxNegT }; }
   }
   if (!isFinite(minPos)) minPos = 0.55;
   if (!isFinite(maxNeg)) maxNeg = 0.3;
   const threshold = Math.round(((minPos + maxNeg) / 2) * 100) / 100;
   const near = nearLevel(threshold, maxNeg);
-  return { threshold, near, margin: minPos - maxNeg, minPos, maxNeg };
+  return { threshold, near, margin: minPos - maxNeg, minPos, maxNeg, maxNegAt, minPosAt };
 }
 
 
@@ -164,6 +166,10 @@ export interface TuneResult {
   periodText: string;
   margin: number;
   verdict: "good" | "fair" | "bad";
+  /** Where the most similar non-example sound is (window) — often a missed occurrence. */
+  mostSimilarOther: { recId: string; t0: number; t1: number } | null;
+  /** Centre of the weakest example. */
+  weakestExample: { recId: string; t: number } | null;
 }
 
 /**
@@ -204,5 +210,7 @@ export function autoTune(s: State): TuneResult {
     periodText: per.text,
     margin: t.margin,
     verdict: t.margin >= 0.2 ? "good" : t.margin >= 0.1 ? "fair" : "bad",
+    mostSimilarOther: t.maxNegAt,
+    weakestExample: t.minPosAt,
   };
 }

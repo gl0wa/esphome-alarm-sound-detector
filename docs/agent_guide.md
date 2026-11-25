@@ -8,10 +8,11 @@ does: pick a ready-made preset, or record an appliance, teach the detector its
 alarm, test it, and produce the ESPHome configuration.
 
 The project: an [ESPHome](https://esphome.io) external component that runs on
-an ESP32-S3 with an INMP441 I2S microphone, recognises an appliance's alarm
-sound (Thermomix finished, rice cooker done, washing machine end beep, …) and
-reports it to Home Assistant as a binary sensor. Detection runs on the device;
-the normal firmware never sends sound anywhere.
+an ESP32 or ESP32-S3 with a microphone ESPHome supports (an I²S or PDM module,
+or a board with a built-in microphone), recognises an appliance's alarm sound
+(Thermomix finished, rice cooker done, washing machine end beep, …) and reports
+it to Home Assistant as a binary sensor. Detection runs on the device; the
+normal firmware never sends sound anywhere.
 
 If you only have a chat (no shell), you cannot run the tools below: guide the
 user through the browser studio instead — it does the same, step by step.
@@ -67,7 +68,7 @@ user through the browser studio instead — it does the same, step by step.
 | Node.js 20 or newer | runs the `asd` tool | `node --version` |
 | ESPHome (dashboard or CLI, 2026.11.0+) | builds and installs firmware | `esphome version` or the user's dashboard |
 | Home Assistant with the ESPHome integration | receives the alarm | ask the user |
-| ESP32-S3 board + INMP441 microphone | the device | ask the user; wiring in [wiring.md](wiring.md) |
+| An ESP32 / ESP32-S3 board with a microphone ESPHome supports | the device | ask the user; `asd boards`; [wiring.md](wiring.md) |
 | ffmpeg (optional) | converts non-WAV recordings | `ffmpeg -version` |
 
 ### Get the `asd` tool
@@ -117,16 +118,30 @@ chimes.
 
 ## 4. Device settings (all paths)
 
+Ask which board and microphone the user has, then pick a hardware preset:
+
 ```sh
-asd device --file device.json --name kitchen-sound-detector
-# other board or wiring:
-asd device --file device.json --board-id esp32-s3-devkitc-1 --pins GPIO1,GPIO7,GPIO5 --channel left
+asd boards                                   # list presets (tested / untested)
+asd device --file device.json --name kitchen-sound-detector                 # reference: Stamp S3 + INMP441
+asd device --file device.json --name kitchen-sound-detector --board cores3  # M5Stack CoreS3 / CoreS3 SE, built-in mic
+# any ESP32 / ESP32-S3 with an I2S MEMS mic (INMP441, ICS-43434, SPH0645, …):
+asd device --file device.json --board i2s --chip esp32s3 --board-id esp32-s3-devkitc-1 --pins GPIO1,GPIO7,GPIO5 --channel left
+# any ESP32 / ESP32-S3 with a PDM mic (SPM1423, MP34DT05, …):
+asd device --file device.json --board pdm --chip esp32 --board-id esp32dev --pins GPIO26,GPIO25
 ```
 
 - `--name`: lowercase letters, digits, dashes; becomes the ESPHome node name and
   `<name>.local`.
-- Default hardware: M5Stack Stamp S3 + INMP441 wired SCK→GPIO1, WS→GPIO7,
-  SD→GPIO5, L/R→GND (left channel), VDD→3V3. See [wiring.md](wiring.md).
+- Presets: `stamp-s3` (reference, tested), `cores3` (built-in ES7210),
+  `xiao-s3-sense` and `atom-echo` (built-in PDM mics), and the generic `i2s` /
+  `pdm` ones for any wiring. Anything else ESPHome can use as a 16 kHz
+  microphone also works: generate a YAML with the closest preset and adapt the
+  `microphone:` block ([ESPHome I²S microphone](https://esphome.io/components/microphone/i2s_audio/),
+  [audio ADCs](https://esphome.io/components/audio_adc/)). Chips with an FPU
+  (ESP32, ESP32-S3) are supported; ESP32-C3/C6/H2 are untested.
+- For hardware marked untested, check the microphone after installing:
+  `asd record --seconds 5` should report a peak above about −45 dBFS while
+  someone talks; silence means wrong pins or channel.
 - Run it **once** and keep `device.json`: the API key in it must stay the same
   across the recording firmware and the final firmware, otherwise Home Assistant
   loses the connection.
@@ -182,19 +197,25 @@ sequence, one chime of a repeating chime, the whole melody if it plays once.
 
 ### 6.3 Mark examples (labels.json)
 
-Fastest: write a group's sounds as examples:
+**Every occurrence of the alarm in the listed recordings must be an example** —
+an unlabelled occurrence counts as "another sound that looks like the alarm"
+and ruins the threshold. Collect them in two complementary ways:
 
 ```sh
-asd events rec.wav more.wav --group D --labels-out labels.json
+# 1. a group from `events` (fast, but room echo can split one sound into groups
+#    or leave a quiet occurrence out):
+asd events rec.wav --group D --labels-out labels.json
+# 2. everything similar to one clear example (as the studio's "Find similar"):
+asd similar --seed rec.wav@74.3-75.1 rec.wav --labels-out labels.json --accept 0.35
 ```
 
-Or find occurrences from one known example (as the studio's "Find similar"):
+Then cross-check: a repeating alarm's occurrences follow its rhythm, so look for
+gaps (e.g. beeps at 13.7, 15.9, _, 20.3 s → one at ~18.1 s is missing) and add
+them by hand — weaker occurrences can score below the cutoff of `similar`.
+`tune` (next step) also prints the most similar non-example sound; when the
+verdict is not "reliable", check whether that spot is a missed occurrence.
 
-```sh
-asd similar --seed rec.wav@18.6-19.26 rec.wav more.wav
-```
-
-and write the real ones into `labels.json` yourself:
+`labels.json` format (written by `--labels-out`, or by hand):
 
 ```json
 { "examples": [ {"file": "rec.wav", "t0": 18.60, "t1": 19.26},
@@ -204,8 +225,7 @@ and write the real ones into `labels.json` yourself:
 
 - Paths are relative to `labels.json`. List background-only files under
   `recordings` so they count as "must not match".
-- Every occurrence of the alarm in the listed recordings must be an example:
-  an unlabelled occurrence counts as a false alarm and ruins the threshold.
+- Times only need to roughly cover the sound; `tune` aligns them.
 - The studio's "Download labels JSON" (Share tab) uses the same format.
 
 ### 6.4 Tune
@@ -240,6 +260,9 @@ asd test --preset rice_cooker.json --labels labels.json
 asd test --preset rice_cooker.json other_recording.wav   # recordings not used for tuning
 ```
 
+Test on **real recordings** (device or phone), not on a clean source file —
+what the microphone hears in the room differs a lot from the original audio.
+
 Reports, per file: when the alarm turned on, matches, near misses, max score,
 and with `--labels` which examples were missed and which matches fell outside
 examples (each match recognises at most one example). Good: every alarm episode turns the alarm on, no "matches away from
@@ -251,7 +274,7 @@ appliances (`asd test --preset <catalog preset json> rec.wav`).
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| FRAGILE margin, "most similar other sound" high | an unlabelled alarm occurrence; or a similar sound | check `asd similar` matches near that score; label missed occurrences; ask the user about the confusing sound |
+| FRAGILE margin, "most similar other sound" high | usually an unlabelled alarm occurrence (`tune` prints where); or a genuinely similar sound | if the spot fits the alarm's rhythm, add it to labels.json; otherwise ask the user what that sound is |
 | examples missed | weak/masked examples, length wrong | drop examples drowned by other noise; `--length` = one unit (+0.1 s) |
 | alarm never turns on although matches appear | rhythm settings | `period_s`, `refractory_s` < period, `min_repetitions` ≤ number of units in the alarm (see [preset_parameters.md](preset_parameters.md)) |
 | many near misses on speech/clatter | band too wide | normally fine; the threshold decides |
@@ -276,10 +299,26 @@ after editing; `asd validate` checks the file.
    asd record --device device.json --seconds 240 --out rec.wav      # uses <name>.local
    asd record --device device.json --ip 192.168.1.42 --seconds 240 --out rec.wav
    ```
-   Start the command, then tell the user: "Recording for 4 minutes now: let the
-   appliance play its alarm 2–3 times, and in between make normal kitchen noise
-   (talk, put dishes away)." The tool prints the peak level; below −45 dBFS
-   means the microphone hears almost nothing (wiring, `--channel right`, distance).
+   `record` blocks until the time is up. If your shell commands have a time
+   limit (often 2 minutes), run it in the background and wait for it before
+   continuing — and don't end your turn while it runs:
+   ```sh
+   nohup node asd.mjs record --device device.json --seconds 240 --out rec.wav > record.log 2>&1 &
+   ```
+   Start it as a command of its own (not chained with other commands in one
+   shell line — some agent shells stop leftover jobs when a command returns),
+   then guide the user, then wait in a separate command:
+   ```sh
+   while pgrep -f "asd.mjs record" > /dev/null; do sleep 5; done; cat record.log
+   ```
+   Wait until the tool prints `recording … from …` (connecting can take a few
+   seconds), then tell the user: "Recording for 4 minutes now: wait 5 seconds,
+   then let the appliance play its alarm 2–3 times, and in between make normal
+   kitchen noise (talk, put dishes away)." The first seconds of every recording
+   calibrate the background level, so sounds there are not reliable examples.
+   The device should be where it will finally listen (same room, same distance
+   from the appliance). The tool prints the peak level; below −45 dBFS means
+   the microphone hears almost nothing (wiring, `--channel right`, distance).
    — or let the user record on their phone: `asd link --device device.json [--ip IP]`
    prints the device page link (it contains the key — show it to the user on
    their own screen, don't paste it into external services). On the device page
@@ -316,12 +355,19 @@ with `--ready ID` (Path A), `--recording` (Path C, temporary) or
   esphome run kitchen-sound-detector.yaml           # first time over USB (user plugs it in)
   esphome run kitchen-sound-detector.yaml --device kitchen-sound-detector.local   # later, over Wi-Fi
   ```
+  Use `esphome run` (compile + upload). `esphome upload` alone flashes the
+  **last compiled** binary — after changing the YAML (e.g. recording → final
+  firmware) run `esphome compile` first, or you flash the old firmware. Confirm
+  with the boot log's compile time, or check the recording page is gone
+  (`curl -s -o /dev/null -w "%{http_code}" http://<name>.local/` → not 200).
 - **Home Assistant:** the device is discovered by the ESPHome integration; it
   asks for the **encryption key** — the `api: encryption: key:` value from the
   YAML / `apiKey` in device.json. Give it to the user privately.
 - **Verify on the device:** ask the user to trigger the real alarm and watch the
-  "… alarm" binary sensor and the "… match score" sensor (or the ESPHome logs:
-  `esphome logs kitchen-sound-detector.yaml`; matches log at INFO, near misses too).
+  "… alarm" binary sensor and the "… match score" sensor, or the ESPHome logs:
+  `esphome logs kitchen-sound-detector.yaml` (over Wi-Fi; add `--device /dev/…`
+  for USB). Expect `Repetition, score …` per match and `Alarm started` once
+  enough matches arrived; `Near miss, score …` shows sounds that came close.
 - **Notification:** the blueprint
   [`notify_when_still_ringing.yaml`](../homeassistant/blueprints/automation/alarm_sound_detector/notify_when_still_ringing.yaml)
   notifies a phone only if the alarm is still ringing after a delay —
@@ -355,7 +401,8 @@ Never attach recordings. Checks: `python tools/presets/validate.py <file>`.
 
 | Command | Purpose | Key output (`--json`) |
 |---|---|---|
-| `device --file F [--name N] [--board stamp-s3\|other] [--board-id ID] [--pins SCK,WS,SD] [--channel left\|right]` | create/update device settings (keys inside) | `deviceName, board, pins` |
+| `boards` | hardware presets | `[{id, label, mic, chip, tested}]` |
+| `device --file F [--name N] [--board ID] [--chip esp32s3\|esp32] [--board-id ID] [--pins SCK,WS,SD \| CLK,DATA] [--channel left\|right]` | create/update device settings (keys inside) | `deviceName, board, mic, pins, tested` |
 | `yaml --device F (--recording \| --preset P… \| --ready ID…) [--label L] [--out Y]` | full ESPHome YAML | YAML text / `out` |
 | `link --device F [--ip IP]` | recording page link (contains key) | `link` |
 | `record --device F [--ip IP] --seconds S --out W` | record from the recording firmware | `seconds, peak_dbfs, complete` |

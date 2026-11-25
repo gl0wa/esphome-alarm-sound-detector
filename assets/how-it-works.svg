@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 210" width="880" height="210" role="img" aria-labelledby="t d">
+  <title id="t">How it works</title>
+  <desc id="d">The appliance plays its alarm, the ESP32 with a microphone recognises it, and the alarm sensor turns on in Home Assistant.</desc>
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c2410c"/><stop offset="1" stop-color="#be123c"/></linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2563eb"/><stop offset="1" stop-color="#7c3aed"/></linearGradient>
+    <linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0369a1"/><stop offset="1" stop-color="#047857"/></linearGradient>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000" flood-opacity="0.18"/></filter>
+    <marker id="ah" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8b93a7"/></marker>
+  </defs>
+  <style>
+    .card text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; fill: #fff; }
+    .h { font-size: 23px; font-weight: 700; }
+    .ic { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+
+  <!-- 1: appliance -->
+  <g class="card" filter="url(#sh)">
+    <rect x="10" y="20" width="250" height="170" rx="22" fill="url(#g1)"/>
+    <!-- pot / appliance with sound waves -->
+    <g class="ic" transform="translate(100 38)">
+      <rect x="6" y="22" width="44" height="34" rx="7"/>
+      <path d="M2 22h52M18 14h20"/>
+      <circle cx="28" cy="40" r="6"/>
+      <path d="M60 24a14 14 0 0 1 0 22M67 17a24 24 0 0 1 0 36"/>
+    </g>
+    <text x="135" y="140" text-anchor="middle" class="h">Appliance plays</text>
+    <text x="135" y="170" text-anchor="middle" class="h">its alarm</text>
+  </g>
+
+  <path d="M270 105h34" stroke="#8b93a7" stroke-width="4" stroke-linecap="round" marker-end="url(#ah)"/>
+
+  <!-- 2: ESP32 + mic -->
+  <g class="card" filter="url(#sh)">
+    <rect x="315" y="20" width="250" height="170" rx="22" fill="url(#g2)"/>
+    <g class="ic" transform="translate(402 36)">
+      <rect x="10" y="10" width="40" height="40" rx="6"/>
+      <path d="M20 2v8M30 2v8M40 2v8M20 50v8M30 50v8M40 50v8M2 20h8M2 30h8M2 40h8M50 20h8M50 30h8M50 40h8"/>
+      <path d="M22 34l6-10 4 7 3-4 4 7" />
+    </g>
+    <text x="440" y="140" text-anchor="middle" class="h">ESP32 + mic</text>
+    <text x="440" y="170" text-anchor="middle" class="h">recognises it</text>
+  </g>
+
+  <path d="M575 105h34" stroke="#8b93a7" stroke-width="4" stroke-linecap="round" marker-end="url(#ah)"/>
+
+  <!-- 3: Home Assistant -->
+  <g class="card" filter="url(#sh)">
+    <rect x="620" y="20" width="250" height="170" rx="22" fill="url(#g3)"/>
+    <g class="ic" transform="translate(712 38)">
+      <path d="M4 30L30 8l26 22"/>
+      <path d="M10 26v30h40V26"/>
+      <path d="M30 34a7 7 0 0 0-7 7v5l-3 3h20l-3-3v-5a7 7 0 0 0-7-7zM27 52a3 3 0 0 0 6 0"/>
+    </g>
+    <text x="745" y="140" text-anchor="middle" class="h">Alarm sensor on</text>
+    <text x="745" y="170" text-anchor="middle" class="h">in Home Assistant</text>
+  </g>
+</svg>

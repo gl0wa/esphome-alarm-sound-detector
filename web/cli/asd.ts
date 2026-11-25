@@ -16,7 +16,8 @@ import {
   buildPresetDoc, personalPresetDoc, PresetMeta, presetTemplate, validatePreset,
 } from "../src/preset";
 import {
-  buildDeviceYaml, captureLink, defaultDeviceSettings, DeviceSettings, safeId, STAMP_S3, YamlPreset,
+  applyHardware, BoardPreset, buildDeviceYaml, captureLink, defaultDeviceSettings, DeviceSettings, HARDWARE, hardwareOf,
+  normalizeDevice, safeId, YamlPreset,
 } from "../src/device";
 
 const VERSION = "1";
@@ -24,8 +25,10 @@ const HELP = `asd — alarm sound detector preset tool (v${VERSION}). Guide: doc
 
 Usage: node asd.mjs <command> [options]        (add --json for machine-readable output)
 
-  device   --file device.json [--name kitchen-sound-detector] [--board stamp-s3|other]
-           [--board-id ID] [--pins SCK,WS,SD] [--channel left|right]
+  boards   List hardware presets (board + microphone) for --board.
+  device   --file device.json [--name kitchen-sound-detector]
+           [--board stamp-s3|i2s|pdm|cores3|xiao-s3-sense|atom-echo]
+           [--chip esp32s3|esp32] [--board-id ID] [--pins SCK,WS,SD | CLK,DATA] [--channel left|right]
            Create/update the device settings file (holds the API + capture keys — keep it private).
   yaml     --device device.json (--recording | --preset p.json... | --ready ID...) [--label NAME] [--out f.yaml]
            Generate the complete ESPHome YAML. --recording = temporary recording firmware.
@@ -36,8 +39,9 @@ Usage: node asd.mjs <command> [options]        (add --json for machine-readable 
   events   rec.wav [more.wav...] [--group A --labels-out labels.json]
            List distinct sounds (time, length, pitch) and groups of similar sounds;
            optionally write one group's sounds as examples into labels.json.
-  similar  --seed rec.wav@T0-T1 [--length S] [--min 0.35] files...
-           Find sounds like the seed example (like "Find similar" in the studio).
+  similar  --seed rec.wav@T0-T1 [--length S] [--min 0.35] files... [--labels-out labels.json [--accept 0.45]]
+           Find sounds like the seed example (like "Find similar" in the studio);
+           optionally write the seed + matches scoring >= --accept as examples.
   tune     --labels labels.json [--length S] --out preset.json [--name "Rice cooker"]
            [--id ID --manufacturer M --model X --sound S --validation V --tested-against A,B]
            Build and tune a preset from marked examples; prints a verdict.
@@ -164,7 +168,7 @@ function loadDevice(path: string | undefined, create = false): DeviceSettings {
     if (!create) die(`${path} not found (create it with: asd device --file ${path})`);
     return defaultDeviceSettings();
   }
-  return { ...defaultDeviceSettings(), ...JSON.parse(readFileSync(path, "utf8")) } as DeviceSettings;
+  return normalizeDevice(JSON.parse(readFileSync(path, "utf8")));
 }
 
 function cmdDevice(a: Args) {
@@ -176,21 +180,30 @@ function cmdDevice(a: Args) {
     d.deviceName = name;
   }
   const board = str(a, "board");
-  if (board === "stamp-s3") Object.assign(d, { board: "stamp-s3", boardId: STAMP_S3.boardId, sck: STAMP_S3.sck, ws: STAMP_S3.ws, sd: STAMP_S3.sd, channel: STAMP_S3.channel });
-  else if (board === "other") d.board = "other";
-  else if (board) die("--board must be stamp-s3 or other");
-  const bid = str(a, "board-id"); if (bid) { d.board = "other"; d.boardId = bid; }
+  if (board) {
+    if (!HARDWARE.some((h) => h.id === board)) die(`--board must be one of: ${HARDWARE.map((h) => h.id).join(", ")}`);
+    Object.assign(d, applyHardware(d, board as BoardPreset));
+  }
+  const hw = hardwareOf(d.board);
+  const custom = (what: string) => { if (!hw.editable) die(`--${what} needs a generic board: --board i2s or --board pdm`); };
+  const bid = str(a, "board-id"); if (bid) { custom("board-id"); d.boardId = bid; }
+  const chip = str(a, "chip");
+  if (chip) { custom("chip"); if (chip !== "esp32" && chip !== "esp32s3") die("--chip esp32 or esp32s3"); d.chip = chip; }
   const pins = str(a, "pins");
   if (pins) {
+    custom("pins");
     const p = pins.split(",").map((x) => x.trim());
-    if (p.length !== 3) die("--pins SCK,WS,SD e.g. GPIO1,GPIO7,GPIO5");
-    d.board = "other"; [d.sck, d.ws, d.sd] = p;
+    if (hw.mic === "i2s") { if (p.length !== 3) die("--pins SCK,WS,SD e.g. GPIO1,GPIO7,GPIO5"); [d.sck, d.ws, d.sd] = p; }
+    else { if (p.length !== 2) die("--pins CLK,DATA e.g. GPIO42,GPIO41"); [d.ws, d.sd] = p; }
   }
-  const chn = str(a, "channel"); if (chn === "left" || chn === "right") { d.board = "other"; d.channel = chn; }
+  const chn = str(a, "channel"); if (chn === "left" || chn === "right") { custom("channel"); d.channel = chn; }
   writeFileSync(file, JSON.stringify(d, null, 1) + "\n", { mode: 0o600 });
-  out(`wrote ${file}: device "${d.deviceName}", board ${d.board} (${d.boardId}, SCK ${d.sck}, WS ${d.ws}, SD ${d.sd}, ${d.channel}).\n` +
+  const hw2 = hardwareOf(d.board);
+  const pinTxt = hw2.mic === "i2s" ? `SCK ${d.sck}, WS ${d.ws}, SD ${d.sd}, ${d.channel}` : hw2.mic === "pdm" ? `CLK ${d.ws}, DATA ${d.sd}, ${d.channel}` : "built-in ES7210";
+  out(`wrote ${file}: device "${d.deviceName}", ${hw2.label} — ${d.chip}, board ${d.boardId}, ${pinTxt}.\n` +
+    (hw2.tested ? "" : "This hardware is not yet verified by the project: check the microphone level after installing (asd record peak > -45 dBFS).\n") +
     "It contains the API encryption key and the capture key: keep it private, do not commit it.",
-  { file, deviceName: d.deviceName, board: d.board, boardId: d.boardId, pins: [d.sck, d.ws, d.sd], channel: d.channel });
+  { file, deviceName: d.deviceName, board: d.board, label: hw2.label, tested: hw2.tested, chip: d.chip, boardId: d.boardId, mic: hw2.mic, pins: hw2.mic === "i2s" ? [d.sck, d.ws, d.sd] : [d.ws, d.sd], channel: d.channel });
 }
 
 function cmdYaml(a: Args) {
@@ -257,6 +270,21 @@ async function cmdRecord(a: Args) {
 
 // ---------- analysis ----------
 interface Ev { file: string; t0: number; t1: number; dur: number; hz: number; db: number; group?: string }
+/** Each event's spectral shape (mean dB above the noise floor per bin, smoothed), for grouping. */
+const SHAPE = new WeakMap<Ev, Float32Array>();
+function shapeOf(spec: Float32Array, n: number): Float32Array {
+  const out = new Float32Array(spec.length);
+  for (let b = 0; b < spec.length; b++) {
+    let acc = 0, w = 0;
+    for (let d = -3; d <= 3; d++) { const v = spec[b + d]; if (v !== undefined) { acc += Math.max(0, v / n); w++; } }
+    out[b] = acc / w;
+  }
+  let norm = 0; for (const v of out) norm += v * v;
+  norm = Math.sqrt(norm) || 1;
+  for (let b = 0; b < out.length; b++) out[b] /= norm;
+  return out;
+}
+const cosine = (a: Float32Array, b: Float32Array) => { let d = 0; for (let i = 0; i < a.length; i++) d += a[i] * b[i]; return d; };
 
 function detectEvents(file: string, pcm: Int16Array): Ev[] {
   const lo = 3, f = getFeatures(pcm, lo, 252);
@@ -283,8 +311,10 @@ function detectEvents(file: string, pcm: Int16Array): Ev[] {
       let peak = 0;
       for (let q = k; q <= end; q++) { peak = Math.max(peak, lvl[q]); for (let b = 0; b < f.bins; b++) spec[b] += f.data[q * f.bins + b]; }
       let bb = 0; for (let b = 1; b < f.bins; b++) if (spec[b] > spec[bb]) bb = b;
-      evs.push({ file, t0: +tOf(k).toFixed(2), t1: +tOf(end).toFixed(2), dur: +((end - k + 1) / FPS).toFixed(2),
-        hz: Math.round((bb + lo) * 31.25), db: +(peak - base).toFixed(1) });
+      const ev: Ev = { file, t0: +tOf(k).toFixed(2), t1: +tOf(end).toFixed(2), dur: +((end - k + 1) / FPS).toFixed(2),
+        hz: Math.round((bb + lo) * 31.25), db: +(peak - base).toFixed(1) };
+      SHAPE.set(ev, shapeOf(spec, end - k + 1));
+      evs.push(ev);
     }
     k = j;
   }
@@ -292,11 +322,23 @@ function detectEvents(file: string, pcm: Int16Array): Ev[] {
 }
 
 function groupEvents(evs: Ev[]) {
-  const groups: { id: string; hz: number; dur: number; members: Ev[] }[] = [];
+  // Same sound = similar spectral shape (not just the loudest pitch, which room
+  // echo and the microphone can shift) and similar length.
+  const groups: { id: string; hz: number; dur: number; shape: Float32Array; members: Ev[] }[] = [];
   for (const e of evs) {
-    const g = groups.find((g) => Math.abs(g.hz - e.hz) <= 80 && e.dur / g.dur < 1.6 && g.dur / e.dur < 1.6);
-    if (g) { g.members.push(e); e.group = g.id; }
-    else { const id = String.fromCharCode(65 + (groups.length % 26)) + (groups.length >= 26 ? groups.length : ""); groups.push({ id, hz: e.hz, dur: e.dur, members: [e] }); e.group = id; }
+    const sh = SHAPE.get(e)!;
+    let best: (typeof groups)[number] | null = null, bestSim = 0.85;
+    for (const g of groups) {
+      if (e.dur / g.dur >= 1.6 || g.dur / e.dur >= 1.6) continue;
+      if (Math.max(e.hz, g.hz) / Math.max(1, Math.min(e.hz, g.hz)) >= 1.6) continue;
+      const sim = cosine(sh, g.shape);
+      if (sim > bestSim) { bestSim = sim; best = g; }
+    }
+    if (best) { best.members.push(e); e.group = best.id; }
+    else {
+      const id = String.fromCharCode(65 + (groups.length % 26)) + (groups.length >= 26 ? groups.length : "");
+      groups.push({ id, hz: e.hz, dur: e.dur, shape: sh, members: [e] }); e.group = id;
+    }
   }
   return groups.filter((g) => g.members.length >= 2).map((g) => {
     const sp: number[] = [];
@@ -346,9 +388,18 @@ function cmdSimilar(a: Args) {
   s.duration = num(a, "length") ?? measureSoundLength(rec.pcm, +m[2], +m[3]) ?? Math.max(0.2, Math.min(5, +m[3] - +m[2]));
   findSimilar(s, "seed", num(a, "min", 0.35)!);
   const rows = s.candidates.map((c) => ({ file: s.recordings.find((r) => r.id === c.recId)!.name, t0: +c.t0.toFixed(2), t1: +c.t1.toFixed(2), score: +c.score.toFixed(3) }));
+  const lo = str(a, "labels-out");
+  if (lo) {
+    const acc = num(a, "accept", num(a, "min", 0.35))!;
+    const base = dirname(resolve(lo));
+    const keep = rows.filter((r) => r.score >= acc);
+    const ex = [{ file: m[1], t0: +m[2], t1: +m[3] }, ...keep].map((r) => ({ file: relative(base, resolve(r.file)), t0: r.t0, t1: r.t1 }));
+    writeFileSync(lo, JSON.stringify({ examples: ex, recordings: files.map((f) => relative(base, resolve(f))) }, null, 1) + "\n");
+    process.stderr.write(`wrote ${lo}: the seed + ${keep.length} matches scoring ≥ ${acc} (check the lowest ones; raise --accept to drop doubtful matches)\n`);
+  }
   out(`sound length ${s.duration} s; ${rows.length} matches (highest first):\n` +
     rows.map((r) => `${r.score.toFixed(2)}  ${r.file}  ${r.t0.toFixed(2)}–${r.t1.toFixed(2)} s`).join("\n") +
-    "\nAccept the real ones into labels.json (with the seed), then run: asd tune --labels labels.json",
+    (lo ? "" : "\nWrite the real ones into labels.json (or use --labels-out), then run: asd tune --labels labels.json"),
   { length_s: s.duration, seed: { file: m[1], t0: +m[2], t1: +m[3] }, matches: rows });
 }
 
@@ -365,6 +416,7 @@ function readLabels(path: string): { s: State; base: string } {
 
 function cmdTune(a: Args) {
   const { s } = readLabels(str(a, "labels") ?? die("--labels labels.json is required"));
+  const nameOf = (id: string) => s.recordings.find((r) => r.id === id)?.name ?? id;
   const first = s.examples[0], rec = s.recordings.find((r) => r.id === first.recId)!;
   s.duration = num(a, "length") ?? measureSoundLength(rec.pcm, first.t0, first.t1) ?? 1.3;
   const r = autoTune(s);
@@ -384,11 +436,16 @@ function cmdTune(a: Args) {
     band_hz: [s.band.loHz, s.band.hiHz], length_s: s.duration, period_s: s.params.period_s,
     min_repetitions: s.params.min_repetitions, threshold: s.params.threshold, near_threshold: s.params.near_threshold,
     examples: s.examples.length, shareable,
+    most_similar_other_at: r.mostSimilarOther ? { file: nameOf(r.mostSimilarOther.recId), t0: +r.mostSimilarOther.t0.toFixed(2), t1: +r.mostSimilarOther.t1.toFixed(2) } : null,
+    weakest_example_at: r.weakestExample ? { file: nameOf(r.weakestExample.recId), t: +r.weakestExample.t.toFixed(2) } : null,
   };
   out(`wrote ${file} — on these recordings: ${{ good: "reliable", fair: "usable but close", bad: "FRAGILE" }[r.verdict]} (margin ${r.margin >= 0 ? "+" : ""}${r.margin.toFixed(2)}: weakest example ${summary.weakest_example}, most similar other sound ${summary.most_similar_other})\n` +
     `listens to ${s.band.loHz}–${s.band.hiHz} Hz, sound ${s.duration} s, ` +
     (s.params.period_s ? `repeats every ${s.params.period_s.toFixed(2)} s, alarm after ${s.params.min_repetitions} matches` : `single sound, alarm after ${s.params.min_repetitions} match(es)`) +
     `, threshold ${s.params.threshold}\n${r.bandText} ${r.periodText}` +
+    (summary.most_similar_other_at ? `\nmost similar other sound: ${summary.most_similar_other_at.file} ${summary.most_similar_other_at.t0}–${summary.most_similar_other_at.t1} s` +
+      (r.verdict !== "good" ? " — if this is an unlabelled occurrence of the alarm, add it to labels.json and tune again" : "") : "") +
+    (summary.weakest_example_at ? `\nweakest example: ${summary.weakest_example_at.file} around ${summary.weakest_example_at.t} s` : "") +
     "\nVerify with recordings not used for tuning (asd test) and, after installing, with the real appliance." +
     (shareable ? "" : "\n(personal preset: give --id --name --manufacturer --model --sound --validation to make it shareable)"), summary);
 }
@@ -446,6 +503,11 @@ async function main() {
   JSON_OUT = a.json === true;
   if (!cmd || cmd === "help" || cmd === "--help" || a.help) { process.stdout.write(HELP); return; }
   if (cmd === "version" || cmd === "--version") { out(VERSION, { version: VERSION }); return; }
+  if (cmd === "boards") {
+    out(HARDWARE.map((h) => `${h.id.padEnd(14)} ${h.tested ? "tested  " : "untested"} ${h.label}\n${" ".repeat(24)}${h.note}`).join("\n"),
+      HARDWARE.map(({ id, label, mic, chip, boardId, tested, note }) => ({ id, label, mic, chip, boardId, tested, note })));
+    return;
+  }
   if (cmd === "device") return cmdDevice(a);
   if (cmd === "yaml") return cmdYaml(a);
   if (cmd === "link") return cmdLink(a);

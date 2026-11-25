@@ -158,7 +158,7 @@ export function suggestThresholds(
   scores: Float32Array, firstFrame: number, expectedTimes: number[], W: number,
   ignoreTimes: number[] = [], // unreviewed candidates: neither positive nor background
   refractoryS = 0, // the detector ignores matches this long after a repetition
-): { threshold: number; near: number; margin: number; minPos: number; maxNeg: number } {
+): { threshold: number; near: number; margin: number; minPos: number; maxNeg: number; maxNegT: number; minPosT: number } {
   const fps = FPS;
   const at = (t: number) => Math.round(t * fps) - firstFrame; // score index
   const skip = [...expectedTimes, ...ignoreTimes];
@@ -167,23 +167,24 @@ export function suggestThresholds(
   // high by nature, and the detector ignores them during the refractory time.
   const half = Math.max(fps, W, Math.round(refractoryS * fps));
   const isNearEx = (idx: number) => skip.some((t) => Math.abs(idx - at(t)) <= half);
-  let minPos = Infinity;
+  let minPos = Infinity, minPosT = NaN;
   for (const t of expectedTimes) {
     let best = -Infinity;
     for (let i = Math.max(0, at(t) - 32); i < Math.min(scores.length, at(t) + 33); i++) {
       if (scores[i] > best) best = scores[i];
     }
-    if (best < minPos) minPos = best;
+    if (best < minPos) { minPos = best; minPosT = t; }
   }
-  let maxNeg = -Infinity;
+  let maxNeg = -Infinity, maxNegT = NaN;
   for (let i = 0; i < scores.length; i++) {
-    if (!isNearEx(i) && scores[i] > maxNeg) maxNeg = scores[i];
+    // time = end of the matched window
+    if (!isNearEx(i) && scores[i] > maxNeg) { maxNeg = scores[i]; maxNegT = (i + firstFrame) / fps; }
   }
   if (!isFinite(minPos)) minPos = 0.55;
   if (!isFinite(maxNeg)) maxNeg = 0.3;
   const threshold = Math.round(((minPos + maxNeg) / 2) * 100) / 100;
   const near = nearLevel(threshold, maxNeg);
-  return { threshold, near, margin: minPos - maxNeg, minPos, maxNeg };
+  return { threshold, near, margin: minPos - maxNeg, minPos, maxNeg, maxNegT, minPosT };
 }
 
 /**

@@ -24,4 +24,10 @@ $ASD yaml --device device.json --preset p.json --out final.yaml
 $ASD yaml --device device.json --recording --out rec.yaml
 grep -q 'name: "Test beeper alarm"' final.yaml
 grep -q 'capture_server:' rec.yaml
+$ASD boards | grep -q cores3
+$ASD device --file pdm.json --board pdm --chip esp32 --board-id esp32dev --pins GPIO26,GPIO25 > /dev/null
+$ASD yaml --device pdm.json --ready thermomix_tm6 | grep -q 'pdm: true'
+$ASD device --file c3.json --board cores3 > /dev/null
+$ASD yaml --device c3.json --recording | grep -q 'platform: es7210'
+if $ASD device --file c3.json --pins GPIO1,GPIO2,GPIO3 2>/dev/null; then echo "fixed board accepted --pins"; exit 1; fi
 echo "asd smoke test OK ($T)"

@@ -4,6 +4,7 @@ import { button, field, fmtT, h, note } from "../helpers";
 import { State } from "../store";
 import { helpIcon } from "../help";
 import { estimatePeriod } from "../template";
+import { player } from "./recordings";
 import { TuneResult, autoTune, bandSuggestion, doBuild, pendingCount, r2, thresholdSuggestion, timesPerRecording } from "../pipeline";
 
 export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
@@ -156,6 +157,13 @@ function renderSummary(root: HTMLElement, s: State, last?: TuneResult) {
   if (s.margin) {
     h("span", "", box, `Your weakest example scores ${s.margin.minPos.toFixed(2)}; the most similar other sound in your recordings ` +
       `scores ${s.margin.maxNeg.toFixed(2)}. The alarm threshold is ${r2(s.params.threshold)}.`);
+  }
+  const other = last?.mostSimilarOther;
+  const rec = other ? s.recordings.find((r) => r.id === other.recId) : undefined;
+  if (other && rec) {
+    const p = h("p", "", box, `Most similar other sound: ${rec.name} ${other.t0.toFixed(1)}–${other.t1.toFixed(1)} s `);
+    button(p, "▶ listen", () => player.play(rec, Math.max(0, other.t0 - 0.3), other.t1 + 0.3));
+    if (verdict !== "good") h("span", "", p, " — if it is your alarm, mark it as an example and tune again.");
   }
   if (verdict === "bad") {
     h("p", "", box, "Some background sound looks almost like the alarm. Check the matches you rejected or left out, " +

@@ -273,3 +273,5 @@ pre.snippet { max-height: 55vh; overflow: auto; }
 .way-text { margin: 2px 0 8px; font-size: 0.85rem; color: var(--muted); }
 .home-q { margin-top: 18px; }
 .route > button.primary { margin-top: 10px; }
+.compact-list { margin: 6px 0 10px; padding-left: 20px; color: var(--muted); font-size: 0.92rem; }
+.compact-list li { margin: 3px 0; }

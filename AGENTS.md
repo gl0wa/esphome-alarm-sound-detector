@@ -22,6 +22,15 @@ Follow **[docs/agent_guide.md](docs/agent_guide.md)**. In short:
 ## 2. Contributing to this repository
 
 - Read `docs/PROJECT_STATE.md` first; update it when a milestone or decision changes.
+- **Keep every surface in sync.** Whenever you change functionality (component
+  options, presets, hardware support, studio flow, `asd` commands or output,
+  YAML generation), update in the same change everything that describes or uses
+  it: `README.md`, `docs/` (especially `agent_guide.md`, `wiring.md`,
+  `preset_authoring.md`, `preset_parameters.md`), the studio's pages and help
+  texts (`web/src/views/`, `web/src/help.ts`), the `asd` tool and its help
+  (`web/cli/asd.ts`), examples, and tests. Grep for the old wording before
+  finishing. A feature is not done while any of these still describes the old
+  behaviour.
 - The repo is public: never commit secrets, private hostnames/IPs or household
   recordings (`data/`, `local/` and audio files are gitignored). Check
   `git diff --cached` before commits.

@@ -35,14 +35,17 @@ The home screen offers two ways to record:
   later). The first step, **Record with the device**, has two parts on one page:
   1. **Install the recording firmware.** The studio generates a temporary
      firmware (your Device settings plus a `capture_server` block). It is the ONLY
-     firmware that can send sound — to your browser only, only while you press
-     Record, unencrypted over your home Wi-Fi (protected by the key in the QR code).
-  2. **Record with your phone.** Scan the QR code (`http://<device-name>.local/#k=…`).
-     Most Android phones can't open `.local` names: enter the device's IP address
-     and scan the second QR code. Record the alarm a few times plus everyday
-     background sounds, then tap “Send to preset studio” — the studio opens in
-     that browser with the clips. (The link also works on a computer on the same
-     Wi-Fi; the device records, the browser is the remote control.)
+     firmware that can send sound: it streams audio, unencrypted over your home
+     network, to a client holding the key in the QR code (the recording page or
+     `asd record`) only while that client records.
+  2. **Record through the device — from your phone or computer.** The ESP32's
+     microphone records; the browser only starts, stops and collects clips. Put
+     the device where it will finally listen first. Open the link (computer) or
+     scan the QR code (`http://<device-name>.local/#k=…`); most Android phones
+     can't open `.local` names — enter the device's IP address for a second QR
+     code. Record the alarm a few times plus everyday background sounds, then
+     press “Send to preset studio” — the studio opens in that browser with the
+     clips.
 - **Record with a phone or laptop** (quickest, no extra firmware): the first step
   is **Add audio & mark the alarm** — record in the page or load audio files.
 - **Let an AI agent do it**: see [agent_guide.md](agent_guide.md).

@@ -1,6 +1,6 @@
 # ESPHome Alarm Sound Detector
 
-> An ESPHome external component (ESP32-S3 + INMP441 microphone) that recognises an appliance's alarm sound on the device and reports it to Home Assistant, plus a browser preset studio and a command-line tool (asd) to create presets from recordings.
+> An ESPHome external component (ESP32 / ESP32-S3 with any ESPHome-supported microphone) that recognises an appliance's alarm sound on the device and reports it to Home Assistant, plus a browser preset studio and a command-line tool (asd) to create presets from recordings.
 
 ## For AI agents
 

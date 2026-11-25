@@ -2,8 +2,11 @@
 // Used by both the ready-made flow and the recording/install steps.
 import { button, field, h, note } from "../helpers";
 import {
+  BoardPreset,
   DeviceSettings,
-  STAMP_S3,
+  HARDWARE,
+  applyHardware,
+  hardwareOf,
   friendlyNameOf,
   genApiKey,
   genCaptureKey,
@@ -13,7 +16,7 @@ import {
 export function renderDeviceCard(parent: HTMLElement, dev: DeviceSettings, onChange: () => void) {
   const box = h("section", "device-card", parent);
   h("h3", "", box, "Device settings");
-  note(box, "Defaults fit the reference hardware (wiring guide in the docs). Change them only if yours differs.");
+  note(box, "Works with most ESP32 / ESP32-S3 boards and microphones ESPHome supports. Pick yours; the defaults fit the reference hardware.");
 
   const g = h("div", "grid", box);
   const nameInp = field(g, "device name", dev.deviceName, {
@@ -30,55 +33,58 @@ export function renderDeviceCard(parent: HTMLElement, dev: DeviceSettings, onCha
   friendly.textContent = `Friendly name: ${friendlyNameOf(dev.deviceName)}`;
 
   const boardWrap = h("label", "field", g);
-  h("span", "", boardWrap, "Microphone board");
+  h("span", "", boardWrap, "Board and microphone");
   const boardSel = h("select", "", boardWrap) as HTMLSelectElement;
-  const o1 = h("option", "", boardSel, "M5Stack Stamp S3 + INMP441") as HTMLOptionElement;
-  o1.value = "stamp-s3";
-  const o2 = h("option", "", boardSel, "Other ESP32-S3 board") as HTMLOptionElement;
-  o2.value = "other";
+  for (const hwp of HARDWARE) {
+    const o = h("option", "", boardSel, hwp.label) as HTMLOptionElement;
+    o.value = hwp.id;
+  }
   boardSel.value = dev.board;
+  const rerender = () => { saveDeviceSettings(dev); onChange(); renderDeviceCard(parent, dev, onChange); parent.removeChild(box); };
   boardSel.onchange = () => {
-    dev.board = boardSel.value === "other" ? "other" : "stamp-s3";
-    if (dev.board === "stamp-s3") {
-      dev.boardId = STAMP_S3.boardId;
-      dev.sck = STAMP_S3.sck;
-      dev.ws = STAMP_S3.ws;
-      dev.sd = STAMP_S3.sd;
-      dev.channel = STAMP_S3.channel;
-    }
-    saveDeviceSettings(dev);
-    onChange();
-    renderDeviceCard(parent, dev, onChange);
-    parent.removeChild(box);
+    Object.assign(dev, applyHardware(dev, boardSel.value as BoardPreset));
+    rerender();
   };
+  const hw = hardwareOf(dev.board);
+  const hwNote = h("p", "note", box, `${hw.note} `);
+  if (!hw.tested) h("span", "", hwNote, "Not yet verified on this hardware by the project — please report how it works.");
+  const wl = h("a", "", hwNote, " Wiring and microphones →") as HTMLAnchorElement;
+  wl.href = "https://github.com/gl0wa/esphome-alarm-sound-detector/blob/main/docs/wiring.md";
+  wl.target = "_blank"; wl.rel = "noopener";
 
-  if (dev.board === "other") {
+  const save = () => { saveDeviceSettings(dev); onChange(); };
+  if (hw.editable) {
     const adv0 = h("div", "grid", box);
-    field(adv0, "ESPHome board id", dev.boardId, {
-      onChange: (v) => { dev.boardId = v.trim() || STAMP_S3.boardId; saveDeviceSettings(dev); onChange(); },
-    });
+    field(adv0, "ESPHome board id", dev.boardId, { onChange: (v) => { dev.boardId = v.trim() || hw.boardId; save(); } });
+    const chipWrap = h("label", "field", adv0);
+    h("span", "", chipWrap, "Chip");
+    const chipSel = h("select", "", chipWrap) as HTMLSelectElement;
+    for (const [v, t] of [["esp32s3", "ESP32-S3"], ["esp32", "ESP32"]] as const) {
+      const o = h("option", "", chipSel, t) as HTMLOptionElement; o.value = v;
+    }
+    chipSel.value = dev.chip;
+    chipSel.onchange = () => { dev.chip = chipSel.value === "esp32" ? "esp32" : "esp32s3"; save(); };
+    if (hw.mic === "i2s") {
+      field(adv0, "SCK / BCLK pin", dev.sck, { onChange: (v) => { dev.sck = v.trim() || dev.sck; save(); } });
+      field(adv0, "WS / LRCLK pin", dev.ws, { onChange: (v) => { dev.ws = v.trim() || dev.ws; save(); } });
+      field(adv0, "SD / DOUT pin", dev.sd, { onChange: (v) => { dev.sd = v.trim() || dev.sd; save(); } });
+    } else {
+      field(adv0, "CLK pin", dev.ws, { onChange: (v) => { dev.ws = v.trim() || dev.ws; save(); } });
+      field(adv0, "DATA pin", dev.sd, { onChange: (v) => { dev.sd = v.trim() || dev.sd; save(); } });
+    }
+    const chWrap = h("label", "field", adv0);
+    h("span", "", chWrap, "Channel");
+    const chSel = h("select", "", chWrap) as HTMLSelectElement;
+    const chOpts = hw.mic === "i2s"
+      ? [["left", "left (L/R pin to GND)"], ["right", "right (L/R pin to 3V3)"]]
+      : [["left", "left"], ["right", "right"]];
+    for (const [v, t] of chOpts) { const o = h("option", "", chSel, t) as HTMLOptionElement; o.value = v; }
+    chSel.value = dev.channel;
+    chSel.onchange = () => { dev.channel = chSel.value === "right" ? "right" : "left"; save(); };
   }
 
   const det = h("details", "", box);
-  h("summary", "", det, "Advanced (pins, channel, keys)");
-  const adv = h("div", "grid", det);
-  const dis = dev.board === "stamp-s3";
-  const sckI = field(adv, "SCK pin", dev.sck, { onChange: (v) => { dev.sck = v.trim() || dev.sck; saveDeviceSettings(dev); onChange(); } });
-  const wsI = field(adv, "WS pin", dev.ws, { onChange: (v) => { dev.ws = v.trim() || dev.ws; saveDeviceSettings(dev); onChange(); } });
-  const sdI = field(adv, "SD pin", dev.sd, { onChange: (v) => { dev.sd = v.trim() || dev.sd; saveDeviceSettings(dev); onChange(); } });
-  for (const i of [sckI, wsI, sdI]) i.disabled = dis;
-  if (dis) note(det, "Stamp S3 preset: SCK GPIO1, WS GPIO7, SD GPIO5, L/R to GND (left channel). Pick “Other ESP32-S3 board” to change pins.");
-  const chWrap = h("label", "field", adv);
-  h("span", "", chWrap, "INMP441 channel");
-  const chSel = h("select", "", chWrap) as HTMLSelectElement;
-  for (const [v, t] of [["left", "left (L/R to GND)"], ["right", "right (L/R to 3V3)"]] as const) {
-    const o = h("option", "", chSel, t) as HTMLOptionElement;
-    o.value = v;
-  }
-  chSel.value = dev.channel;
-  chSel.disabled = dis;
-  chSel.onchange = () => { dev.channel = chSel.value === "right" ? "right" : "left"; saveDeviceSettings(dev); onChange(); };
-
+  h("summary", "", det, "Advanced (keys)");
   const keyRow = h("div", "grid", det);
   const apiI = field(keyRow, "API encryption key (in YAML)", dev.apiKey, {
     onChange: (v) => { dev.apiKey = v.trim() || dev.apiKey; saveDeviceSettings(dev); onChange(); },
@@ -89,7 +95,7 @@ export function renderDeviceCard(parent: HTMLElement, dev: DeviceSettings, onCha
   });
   capI.readOnly = true;
   const btnRow = h("div", "row", det);
-  button(btnRow, "Regenerate API key", () => { dev.apiKey = genApiKey(); saveDeviceSettings(dev); onChange(); renderDeviceCard(parent, dev, onChange); parent.removeChild(box); });
-  button(btnRow, "Regenerate capture key", () => { dev.captureKey = genCaptureKey(); saveDeviceSettings(dev); onChange(); renderDeviceCard(parent, dev, onChange); parent.removeChild(box); });
+  button(btnRow, "Regenerate API key", () => { dev.apiKey = genApiKey(); rerender(); });
+  button(btnRow, "Regenerate capture key", () => { dev.captureKey = genCaptureKey(); rerender(); });
   void nameInp;
 }
