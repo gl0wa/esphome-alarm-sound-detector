@@ -170,3 +170,16 @@ input[type="file"] { max-width: 100%; }
 .restore-banner { border: 1px solid var(--accent); border-radius: 10px; padding: 12px 14px; margin: 10px 0;
   background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .restore-banner .row { margin: 8px 0 4px; }
+.home-link { cursor: pointer; }
+.home-link:hover { text-decoration: underline; }
+.home-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 12px 0; }
+.home-card { border: 1px solid var(--border); border-radius: 12px; padding: 16px; background: var(--panel); }
+.home-card h3 { margin-top: 0; }
+.home-card button { margin-top: 8px; }
+.device-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin: 12px 0; background: var(--panel); }
+.device-card h3 { margin-top: 0; }
+.qr-box { margin: 12px 0; }
+.qr-box svg { border: 1px solid var(--border); border-radius: 8px; background: #fff; padding: 8px; }
+details { margin: 8px 0; }
+summary { cursor: pointer; color: var(--muted); }
+.field select:disabled, .field input:disabled { opacity: 0.6; }

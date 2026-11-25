@@ -29,6 +29,13 @@ Private, household-specific operational notes live in `local/PRIVATE_NOTES.md`
    (pytest, studio WASM tests, firmware + examples compile). Studio verified on the real TM6
    session; tools model 16-bit device input and the TM6 preset was rebuilt that way.
    Next: rice-cooker preset via the studio (user), more field validation of the TM6 preset.
+7. [x] Recording from the device into the studio (2026-11-25): `capture_server` component
+   (ESP-IDF httpd, own task per stream, bearer key from the studio's QR link, 401/409/429,
+   lockout, max duration) + device-served recorder page (clips in IndexedDB, postMessage
+   hand-off to the studio). Studio: home with two modes (ready-made / create), YAML
+   generator with defaults (+ inline presets), QR code, import banner. Verified on the real
+   device: 8 s stream at -34 dBFS no drops, abort, busy, lockout, page->studio import of 2 clips.
+   Generated YAMLs validated by `esphome config` in CI (examples job).
 
 ## Decisions
 - ESP-IDF; detector at 16 kHz (TM6 content < 5 kHz); production firmware has no audio

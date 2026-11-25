@@ -1,0 +1,107 @@
+# TEMPORARY RECORDING FIRMWARE — not for daily use.
+#
+# Flash this to collect raw appliance-sound clips for the preset studio
+# (https://gl0wa.github.io/esphome-alarm-sound-detector/). While it runs,
+# the device serves a recorder page on plain HTTP: open it through the QR
+# code shown in the preset studio, press Record, then press "Send clips to
+# the preset studio".
+#
+# Privacy: while recording, raw audio crosses the LAN unencrypted to the
+# browser that opened the page (same Wi-Fi only). Nothing is uploaded
+# anywhere; clips stay in that browser tab until you send or delete them.
+# When you are done, flash the normal detection firmware back
+# (stamp-s3-inmp441-thermomix-tm6.yaml).
+#
+# Same board/mic as the TM6 example, plus the capture_server component and
+# a recording-state binary sensor (privacy indicator in Home Assistant).
+substitutions:
+  name: thermomix-recorder
+  friendly_name: Thermomix Recorder
+  # INMP441 wiring (see docs/wiring.md)
+  mic_sck_pin: GPIO1   # SCK / BCLK
+  mic_ws_pin: GPIO7    # WS / LRCLK
+  mic_sd_pin: GPIO5    # SD / DOUT
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2026.11.0
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 8MB
+  framework:
+    type: esp-idf    # required by the I2S microphone / capture server
+
+external_components:
+  - source: github://gl0wa/esphome-alarm-sound-detector@main
+    components: [alarm_sound_detector, capture_server]
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    encryption: {}   # reuses the API encryption key
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none   # mains powered; avoids audio processing hiccups
+
+i2s_audio:
+  - id: i2s_mic_bus
+    i2s_lrclk_pin: ${mic_ws_pin}
+    i2s_bclk_pin: ${mic_sck_pin}
+
+microphone:
+  - platform: i2s_audio
+    id: mic
+    i2s_audio_id: i2s_mic_bus
+    i2s_din_pin: ${mic_sd_pin}
+    adc_type: external
+    pdm: false
+    channel: left          # INMP441 L/R pin tied to GND
+    bits_per_sample: 32bit
+    sample_rate: 16000     # capture and detector both require 16 kHz
+
+# The detector keeps running alongside the recorder (same mic, refcounted).
+alarm_sound_detector:
+  - id: tm6
+    microphone:
+      microphone: mic
+      bits_per_sample: 16
+    template: vorwerk_thermomix_tm6_alarm   # bundled preset (alias: thermomix_tm6)
+
+capture_server:
+  id: recorder
+  microphone:
+    microphone: mic
+    bits_per_sample: 16   # the stream is always 16 kHz mono 16-bit
+  key: !secret capture_key   # >= 16 chars, [A-Za-z0-9_-] only; the page URL carries it in #k=
+  port: 80
+  # max_duration: 30min   # default: longest single recording
+  # studio_url: "https://gl0wa.github.io/esphome-alarm-sound-detector/"   # default
+
+binary_sensor:
+  - platform: alarm_sound_detector
+    alarm_sound_detector_id: tm6
+    name: "Thermomix alarm"
+  - platform: capture_server
+    capture_server_id: recorder
+    name: "Recording in progress"   # ON while a browser records audio
+
+sensor:
+  - platform: alarm_sound_detector
+    alarm_sound_detector_id: tm6
+    name: "Alarm match score"
+    entity_category: diagnostic
+  - platform: wifi_signal
+    name: "Wi-Fi signal"
+    update_interval: 60s
+    entity_category: diagnostic

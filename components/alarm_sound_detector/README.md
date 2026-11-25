@@ -67,8 +67,11 @@ alarm_sound_detector:
 
 `template:` accepts a preset `id` (e.g. `vorwerk_thermomix_tm6_alarm`), one
 of its `aliases` (e.g. `thermomix_tm6` — existing configs keep working), a
-or a path to a JSON file (v1 or v2)
-**relative to the main YAML file**. Every detection field is optional and
+path to a JSON file (v1 or v2)
+**relative to the main YAML file**, or an **inline v2 preset mapping** with
+the same fields as the JSON file (including `data_int8_b64`) — so a single
+pasted YAML works without a separate file. Inline presets are validated
+exactly like file presets: Every detection field is optional and
 defaults to the preset's tuned value; YAML values win:
 
 | Option | Default source | Meaning |
@@ -102,6 +105,21 @@ sensor:
     alarm_sound_detector_id: tm6
     name: "Alarm match score"
     report_interval: 60s          # default; otherwise publishes the max score seen per interval
+```
+
+Inline preset (same fields as the preset JSON; the studio's "copy YAML"
+button produces this):
+
+```yaml
+alarm_sound_detector:
+  - id: tm6
+    microphone:
+      microphone: mic
+      bits_per_sample: 16
+    template:
+      format: 2
+      id: vorwerk_thermomix_tm6_alarm
+      # ... all other v2 fields, including data_int8_b64 ...
 ```
 
 The score sensor publishes the candidate peak immediately on every

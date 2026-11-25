@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Alarm recorder</title>
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#111;--mut:#555;--acc:#0b6;--dan:#c22;--box:#f1f1f1;--ln:#ccc}
+@media(prefers-color-scheme:dark){:root{--bg:#121212;--fg:#eee;--mut:#aaa;--acc:#2c8;--dan:#f66;--box:#1e1e1e;--ln:#444}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 system-ui,-apple-system,sans-serif;padding:16px;max-width:640px;margin-inline:auto}
+h1{font-size:1.3rem;margin:.2em 0}.privacy{background:var(--box);border:1px solid var(--ln);border-radius:10px;padding:10px 12px;margin:12px 0}
+button{min-height:52px;min-width:52px;font-size:1.05rem;border-radius:12px;border:1px solid var(--ln);background:var(--box);color:var(--fg);padding:10px 16px;touch-action:manipulation}
+button:active{transform:scale(.98)}#rec{background:var(--acc);color:#fff;border:0;font-size:1.25rem;width:100%;font-weight:700}
+#rec.on{background:var(--dan)}.row{display:flex;gap:8px;margin:10px 0;flex-wrap:wrap}input[type=text]{min-height:52px;font-size:1rem;border-radius:10px;border:1px solid var(--ln);background:var(--bg);color:var(--fg);padding:8px 12px;flex:1;min-width:140px}
+#meter{height:14px;background:var(--box);border:1px solid var(--ln);border-radius:7px;overflow:hidden;margin:8px 0}#lvl{height:100%;width:0%;background:var(--acc)}
+#elapsed{font-variant-numeric:tabular-nums;font-size:1.6rem;font-weight:700}.clip{border:1px solid var(--ln);border-radius:10px;padding:10px;margin:8px 0}.clip .nm{font-weight:700}.clip .meta{color:var(--mut);font-size:.9rem}.clip .ops{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.clip .ops button{min-height:44px;font-size:.95rem}
+#status{margin:10px 0;min-height:1.4em;font-weight:600}.hint{color:var(--mut);font-size:.92rem}.hidden{display:none!important}#sendBtn{width:100%;background:#06c;color:#fff;border:0;font-weight:700}
+</style>
+</head>
+<body>
+<h1 id="dev">Alarm recorder</h1>
+<div class="privacy">Recording mode: sound is sent from the device to this browser <b>only while you record</b>. Reinstall the normal firmware when you are done.</div>
+
+<div id="notice" role="alert" class="hint"></div>
+<section id="gate" class="hidden">
+<p>Open this page through the <b>QR code in the preset studio</b> — the link carries the access key.</p>
+<p>If you lost the link, paste the key manually:</p>
+<div class="row"><input type="text" id="keyIn" placeholder="access key" autocomplete="off" autocapitalize="off" spellcheck="false"><button id="keyGo">Use this key</button></div>
+</section>
+
+<section id="app" class="hidden">
+<div id="info" class="hint"></div>
+<div class="row"><input type="text" id="clipName" placeholder="clip 1" aria-label="clip name"></div>
+<button id="rec">● Record</button>
+<div class="row" style="align-items:center;justify-content:space-between"><div id="elapsed">0.0 s</div><div id="st" class="hint">idle</div></div>
+<div id="meter" aria-hidden="true"><div id="lvl"></div></div>
+<h2>Clips (<span id="n">0</span>)</h2>
+<div id="clips"></div>
+<button id="sendBtn">Send clips to the preset studio</button>
+<div id="status" role="status"></div>
+<div class="row"><button id="dlAll">Download all as WAV</button><button id="delSent" class="hidden">Delete sent clips</button></div>
+<p class="hint">Tip: keep the screen on while recording. If the phone locks or you switch apps, the recording stops — what was received so far is kept as a clip.</p>
+</section>
+
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const status=t=>{$("status").textContent=t;};
+let key=null,info=null,rec=null,sentIds=null,timer=null;
+
+/* --- key: #k=<key> -> sessionStorage, then scrubbed from the URL --- */
+(function(){
+  const m=/[#&]k=([A-Za-z0-9_-]{16,})/.exec(location.hash);
+  if(m){key=m[1];try{sessionStorage.setItem("asd-key",key);}catch(e){}history.replaceState(null,"",location.pathname+location.search);}
+  else{try{key=sessionStorage.getItem("asd-key");}catch(e){key=null;}}
+  if(!key||!/^[A-Za-z0-9_-]{16,}$/.test(key)){$("gate").classList.remove("hidden");return;}
+  start();
+})();
+$("keyGo").onclick=()=>{
+  const v=$("keyIn").value.trim();
+  if(!/^[A-Za-z0-9_-]{16,}$/.test(v)){status("That key looks wrong (letters, digits, - and _, at least 16 characters).");$("gate").classList.remove("hidden");return;}
+  key=v;try{sessionStorage.setItem("asd-key",key);}catch(e){}
+  start();
+};
+
+async function authed(path,opts){
+  return fetch(path,Object.assign({headers:{"Authorization":"Bearer "+key},"cache":"no-store"},opts||{}));
+}
+
+async function start(){
+  $("gate").classList.add("hidden");
+  let r;
+  const note=(t)=>{$("notice").textContent=t||"";};
+  try{r=await authed("/api/info");}
+  catch(e){$("gate").classList.remove("hidden");note("Cannot reach the device. Make sure this phone is on the same Wi-Fi, then reload.");return;}
+  if(r.status===401){$("gate").classList.remove("hidden");$("app").classList.add("hidden");note("The device did not accept this key. Open the page again through the QR code in the preset studio.");return;}
+  if(r.status===429){
+    // Locked after too many wrong keys: wait it out and retry automatically.
+    let left=31;$("app").classList.add("hidden");
+    const tick=()=>{if(left<=0){note("");start();return;}note("Too many attempts — the device paused access. Retrying in "+left+" s…");left--;setTimeout(tick,1000);};
+    tick();return;
+  }
+  note("");
+  if(!r.ok){note("Device error "+r.status+". Reload the page to try again.");return;}
+  info=await r.json();
+  $("dev").textContent=info.friendly_name||info.name||"Alarm recorder";
+  document.title=$("dev").textContent+" · recorder";
+  $("info").textContent="Device: "+(info.friendly_name||info.name)+" · max "+Math.round(info.max_duration_s/60)+" min per take";
+  $("app").classList.remove("hidden");
+  refreshClips();
+}
+
+/* --- IndexedDB clip store (survives reloads until sent/deleted) --- */
+function db(){return new Promise((res,rej)=>{const q=indexedDB.open("asd-captures",1);q.onupgradeneeded=()=>{q.result.createObjectStore("clips",{keyPath:"id",autoIncrement:true});};q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}
+async function withStore(mode,fn){const d=await db();return new Promise((res,rej)=>{const t=d.transaction("clips",mode),s=t.objectStore("clips");let out;try{out=fn(s);}catch(e){d.close();rej(e);return;}t.oncomplete=()=>{d.close();res(out&&"result"in out?out.result:out);};t.onerror=()=>{d.close();rej(t.error);};});}
+const saveClip=c=>withStore("readwrite",s=>s.add(c));
+const listClips=()=>withStore("readonly",s=>s.getAll());
+const delClip=id=>withStore("readwrite",s=>s.delete(id));
+const getClip=id=>withStore("readonly",s=>s.get(id));
+const putClip=c=>withStore("readwrite",s=>s.put(c));
+
+/* --- recording --- */
+$("rec").onclick=()=>{rec?stopRec(true):startRec();};
+async function startRec(){
+  status("");
+  let r;
+  try{r=await authed("/api/stream");}
+  catch(e){status("Cannot reach the device.");return;}
+  if(r.status===409){status("Someone else is already recording. Try again later.");return;}
+  if(r.status===401){status("Wrong key — reopen the page through the studio QR code.");return;}
+  if(r.status===429){status("Locked after too many attempts — wait 30 s.");return;}
+  if(!r.ok||!r.body){status("Device error "+r.status);return;}
+  const name=($("clipName").value.trim()||$("clipName").placeholder||"clip");
+  rec={reader:r.body.getReader(),chunks:[],size:0,carry:null,name:name,t0:performance.now(),live:true,ctl:null};
+  $("rec").textContent="■ Stop";$("rec").classList.add("on");$("st").textContent="recording…";
+  timer=setInterval(()=>{if(rec)$("elapsed").textContent=((performance.now()-rec.t0)/1000).toFixed(1)+" s";},200);
+  (async()=>{
+    try{for(;;){const o=await rec.reader.read();if(o.done){finishStream("The device ended the stream (max length reached?) — kept what was received.");break;}push(o.value);}}
+    catch(e){if(rec&&rec.live)finishStream("Connection lost — kept what was received so far.");}
+  })();
+}
+function push(v){
+  let off=0;
+  if(rec.carry!==null){const c=new Uint8Array(v.length+1);c[0]=rec.carry;c.set(v,1);v=c;rec.carry=null;off=0;}
+  if(v.length%2===1){rec.carry=v[v.length-1];v=v.slice(0,v.length-1);}
+  if(v.length===0)return;
+  rec.chunks.push(v.slice(0));rec.size+=v.length;
+  const s=new Int16Array(v.buffer,v.byteOffset,v.length/2);
+  let pk=0;for(let i=0;i<s.length;i+=7){const a=Math.abs(s[i]);if(a>pk)pk=a;}
+  $("lvl").style.width=Math.min(100,(pk/32768*140)).toFixed(1)+"%";
+}
+async function stopRec(user){
+  if(!rec)return;
+  const r=rec;rec=null;r.live=false;
+  clearInterval(timer);timer=null;
+  try{await r.reader.cancel();}catch(e){}
+  $("rec").textContent="● Record";$("rec").classList.remove("on");$("st").textContent="idle";$("lvl").style.width="0%";
+  await keep(r,user?"Saved.":"Saved (stream ended).");
+}
+function finishStream(msg){if(!rec)return;status(msg);stopRec(false);}
+async function keep(r,msg){
+  const pcm=new Uint8Array(r.size);let o=0;for(const c of r.chunks){pcm.set(c,o);o+=c.length;}
+  if(r.carry!==null){/* drop trailing half-sample */}
+  if(pcm.length<3200){status("Too short — nothing saved (under 0.1 s).");return;}
+  const all=await listClips();
+  const name=(r.name&&r.name.trim())||("clip "+(all.length+1));
+  await saveClip({name:name,pcm:pcm.buffer,at:Date.now()});
+  $("clipName").placeholder="clip "+(all.length+2);
+  status(msg||"Saved.");
+  refreshClips();
+}
+
+/* --- clip list --- */
+function dur(b){return (b.byteLength/2/16000).toFixed(1)+" s";}
+async function refreshClips(){
+  const all=await listClips();
+  $("n").textContent=all.length;
+  $("sendBtn").textContent=all.length?("Send "+all.length+" clip"+(all.length>1?"s":"")+" to the preset studio"):"Send clips to the preset studio";
+  const box=$("clips");box.innerHTML="";
+  for(const c of all){
+    const d=document.createElement("div");d.className="clip";
+    const t=document.createElement("div");t.className="nm";t.textContent=c.name;const m=document.createElement("div");m.className="meta";m.textContent=dur(c.pcm);
+    const ops=document.createElement("div");ops.className="ops";
+    const bP=document.createElement("button");bP.textContent="Play";bP.onclick=()=>play(c.id);
+    const bR=document.createElement("button");bR.textContent="Rename";bR.onclick=async()=>{const n=prompt("Clip name:",c.name);if(n&&n.trim()){c.name=n.trim();await putClip(c);refreshClips();}};
+    const bD=document.createElement("button");bD.textContent="WAV";bD.onclick=async()=>{const f=await getClip(c.id);dl(wav(f.pcm),f.name+".wav");};
+    const bX=document.createElement("button");bX.textContent="Delete";bX.onclick=async()=>{await delClip(c.id);refreshClips();};
+    ops.append(bP,bR,bD,bX);d.append(t,m,ops);box.append(d);
+  }
+}
+let AC=null;
+async function play(id){
+  const c=await getClip(id);if(!c)return;
+  try{
+    AC=AC||new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000});
+    if(AC.state==="suspended")await AC.resume();
+    const n=c.pcm.byteLength/2,b=AC.createBuffer(1,n,16000),d=b.getChannelData(0),s=new Int16Array(c.pcm);
+    for(let i=0;i<n;i++)d[i]=s[i]/32768;
+    const src=AC.createBufferSource();src.buffer=b;src.connect(AC.destination);src.start();
+  }catch(e){status("Audio playback failed in this browser — download the WAV instead.");}
+}
+
+/* --- WAV download --- */
+function wav(pcm){
+  const n=pcm.byteLength/2,h=new ArrayBuffer(44),v=new DataView(h);
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,"RIFF");v.setUint32(4,36+pcm.byteLength,true);ws(8,"WAVEfmt ");v.setUint32(16,16,true);
+  v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,16000,true);v.setUint32(28,32000,true);
+  v.setUint16(32,2,true);v.setUint16(34,16,true);ws(36,"data");v.setUint32(40,pcm.byteLength,true);
+  return new Blob([h,pcm],{type:"audio/wav"});
+}
+function dl(blob,name){const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);}
+$("dlAll").onclick=async()=>{
+  const all=await listClips();
+  if(!all.length){status("No clips yet.");return;}
+  const gap=new Uint8Array(16000);let total=0;
+  for(const c of all)total+=c.pcm.byteLength+gap.byteLength;
+  const out=new Uint8Array(total);let o=0;
+  for(const c of all){out.set(new Uint8Array(c.pcm),o);o+=c.pcm.byteLength;out.set(gap,o);o+=gap.byteLength;}
+  dl(wav(out.buffer),"clips.wav");
+};
+
+/* --- send to the preset studio --- */
+$("sendBtn").onclick=async()=>{
+  const all=await listClips();
+  if(!all.length){status("Record a clip first.");return;}
+  if(!info){status("Device info missing — reload the page.");return;}
+  const w=window.open(info.studio_url+"#import","_blank");
+  if(!w){status("Popup blocked — allow popups for this page and try again.");return;}
+  status("Waiting for the preset studio…");
+  sentIds=null;$("delSent").classList.add("hidden");
+  let done=false;
+  const to=setTimeout(()=>{if(!done){status("The studio did not answer within 15 s. Keep this page open, open the studio, and press Send again.");window.removeEventListener("message",onMsg);}},15000);
+  async function onMsg(e){
+    if(e.source!==w)return;
+    const d=e.data||{};
+    if(d.type==="asd-studio-ready"&&d.version===1){
+      const clips=(await listClips()).map(c=>({name:c.name,sampleRate:16000,pcm:c.pcm.slice(0)}));
+      w.postMessage({type:"asd-capture-clips",version:1,device:{name:info.name,friendly_name:info.friendly_name},clips:clips},"*");
+    }else if(d.type==="asd-capture-received"&&typeof d.count==="number"){
+      done=true;clearTimeout(to);window.removeEventListener("message",onMsg);
+      sentIds=(await listClips()).map(c=>c.id);
+      status("Sent ✓ — "+d.count+" clip(s) received by the studio.");
+      $("delSent").classList.remove("hidden");
+    }
+  }
+  window.addEventListener("message",onMsg);
+};
+$("delSent").onclick=async()=>{
+  if(!sentIds)return;
+  for(const id of sentIds){try{await delClip(id);}catch(e){}}
+  sentIds=null;$("delSent").classList.add("hidden");status("Sent clips deleted from this page.");refreshClips();
+};
+</script>
+</body>
+</html>

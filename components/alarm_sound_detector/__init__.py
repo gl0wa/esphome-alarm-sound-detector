@@ -36,13 +36,25 @@ CORE_N_FFT = preset_util.CORE_N_FFT
 CORE_HOP = preset_util.CORE_HOP
 
 
-def validate_detector_config(config: ConfigType) -> ConfigType:
-    try:
-        preset = preset_util.resolve_template(
-            config[CONF_TEMPLATE],
-            CORE.config_dir if CORE.config_dir else ".")
-    except preset_util.PresetError as err:
-        raise cv.Invalid(str(err))
+def validate_detector_config(config: ConfigType) -> dict:
+    ref = config[CONF_TEMPLATE]
+    if isinstance(ref, dict):
+        # Inline v2 preset: the same fields as the JSON file, so a single
+        # pasted YAML works without a separate file.
+        try:
+            preset = preset_util.normalize_v2(
+                preset_util.validate_v2(ref, "inline template:"))
+        except preset_util.PresetError as err:
+            raise cv.Invalid(str(err))
+        template_label = preset["id"]
+    else:
+        try:
+            preset = preset_util.resolve_template(
+                ref,
+                CORE.config_dir if CORE.config_dir else ".")
+        except preset_util.PresetError as err:
+            raise cv.Invalid(str(err))
+        template_label = str(ref)
 
     thr = config.get(CONF_THRESHOLD, preset["threshold"])
     near = config.get(CONF_NEAR_THRESHOLD, preset["near_threshold"])
@@ -71,6 +83,7 @@ def validate_detector_config(config: ConfigType) -> ConfigType:
     # Merged detection parameters: every YAML field is optional and
     # overrides the preset default.
     config["_preset"] = preset
+    config["_template_label"] = template_label
     config["_detection"] = {
         "threshold": thr,
         "near_threshold": near,
@@ -92,7 +105,7 @@ CONFIG_SCHEMA = cv.All(
                 max_bits_per_sample=32,
                 max_channels=1,
             ),
-            cv.Required(CONF_TEMPLATE): cv.string,
+            cv.Required(CONF_TEMPLATE): cv.Any(cv.string, dict),
             # All detection fields are optional: omitted fields default to
             # the selected preset's tuned values (see presets/*.json).
             cv.Optional(CONF_THRESHOLD): cv.zero_to_one_float,
@@ -142,7 +155,7 @@ async def to_code(config: ConfigType) -> None:
     period_s = det["period_s"] if det["period_s"] is not None else -1.0
     cg.add(var.set_template(arr, preset["frames"], preset["bins"],
                             preset["bin_lo"], preset["bin_hi"],
-                            str(config[CONF_TEMPLATE]), period_s,
+                            str(config["_template_label"]), period_s,
                             det["refractory_s"], det["release_s"]))
     cg.add(var.set_threshold(det["threshold"]))
     cg.add(var.set_near_threshold(det["near_threshold"]))

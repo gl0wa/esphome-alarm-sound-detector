@@ -1,13 +1,16 @@
 // Step 5: export the preset (JSON + YAML + labels), session save/restore.
-import { buildPresetDoc, buildYamlSnippet, PresetMeta, validatePreset } from "../preset";
+import { buildPresetDoc, PresetMeta, validatePreset } from "../preset";
 import { button, download, field, h, note, textArea } from "../helpers";
 import { clearSession, State, storageUsed } from "../store";
 import { REPO_URL } from "../help";
+import { DeviceSettings, YamlPreset, buildDeviceYaml, loadDeviceSettings, safeId } from "../device";
+import { renderDeviceCard } from "./deviceCard";
 
-type ExportTab = "esphome" | "github";
-let tab: ExportTab = "esphome";
+type ExportTab = "install" | "github";
+let tab: ExportTab = "install";
 
-export function renderExport(root: HTMLElement, s: State, refresh: () => void) {
+export function renderExport(root: HTMLElement, s: State, refresh: () => void, devIn?: DeviceSettings) {
+  const dev: DeviceSettings = devIn ?? loadDeviceSettings();
   root.innerHTML = "";
   h("h2", "", root, "5 · Export");
   note(root, "Only the averaged, quantised template leaves this page — never your audio. " +
@@ -62,7 +65,6 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void) {
   check();
 
   const id = () => meta().id || "preset";
-  const yaml = () => buildYamlSnippet(id(), `${id()}.json`);
   const downloadPreset = (): boolean => {
     const doc = docOf();
     const v = validatePreset(doc);
@@ -77,36 +79,47 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void) {
     const b = button(tabs, label, () => { tab = t; renderTab(); }, "subtab");
     return b;
   };
-  const tEsp = tabBtn("esphome", "Use in your ESPHome device");
+  const tInstall = tabBtn("install", "Install your preset");
   const tGh = tabBtn("github", "Share it on GitHub");
 
   function renderTab() {
-    tEsp.classList.toggle("active", tab === "esphome");
+    tInstall.classList.toggle("active", tab === "install");
     tGh.classList.toggle("active", tab === "github");
     body.innerHTML = "";
-    if (tab === "esphome") renderEsphome(); else renderGithub();
+    if (tab === "install") renderInstall();
+    else renderGithub();
   }
 
-  function renderEsphome() {
-    const ol = h("ol", "steps-list", body);
-    h("li", "", ol, "Download the preset file and put it next to your device's YAML in the ESPHome config folder.");
-    const li2 = h("li", "", ol, "Add the snippet below to the device YAML. The device also needs Wi-Fi, the API and an I2S microphone running at 16 kHz — start from the ");
-    const ex = h("a", "", li2, "complete example configuration") as HTMLAnchorElement;
-    ex.href = `${REPO_URL}/blob/main/examples/stamp-s3-inmp441-thermomix-tm6.yaml`; ex.target = "_blank"; ex.rel = "noopener";
-    h("span", "", li2, " (microphone pins and settings included) and see ");
-    const wi = h("a", "", li2, "wiring") as HTMLAnchorElement;
-    wi.href = `${REPO_URL}/blob/main/docs/wiring.md`; wi.target = "_blank"; wi.rel = "noopener";
-    h("span", "", li2, ". Replace its template: line with your preset file name.");
-    h("li", "", ol, "Install the firmware, then watch the “Alarm match score” sensor in Home Assistant for a few days.");
+  function renderInstall() {
+    note(body, "Install this to switch back to private mode — the recording firmware should not stay installed. " +
+      "This is the NORMAL device firmware (no capture_server): sound never leaves the device.");
+    renderDeviceCard(body, dev, () => renderTab());
+    const doc = docOf();
+    const pid = safeId(meta().id || "my_preset");
+    const presets: YamlPreset[] = [{ id: pid, ref: null, doc, label: meta().model || meta().name || undefined }];
+    const yaml = buildDeviceYaml(dev, presets, false);
+    h("pre", "snippet", body, yaml);
     const row = h("div", "row", body);
-    button(row, "Download preset JSON", () => { downloadPreset(); }, "primary");
-    button(row, "Download YAML snippet", () => download(`${id()}.yaml`, yaml()));
     const copyMsg = h("span", "muted", row, "");
-    button(row, "Copy YAML snippet", async () => {
-      try { await navigator.clipboard.writeText(yaml()); copyMsg.textContent = "Copied."; }
-      catch { copyMsg.textContent = "Copy failed; select the text below instead."; }
-    });
-    h("pre", "snippet", body, yaml());
+    button(row, "Copy device YAML", async () => {
+      try { await navigator.clipboard.writeText(yaml); copyMsg.textContent = "Copied."; }
+      catch { copyMsg.textContent = "Copy failed; select the text above instead."; }
+    }, "primary");
+    button(row, "Download device YAML", () => download(`${dev.deviceName}.yaml`, yaml));
+    button(row, "Download preset JSON", () => { downloadPreset(); });
+    const ol = h("ol", "steps-list", body);
+    h("li", "", ol, "Paste the YAML above into the ESPHome dashboard (replace the recording firmware).");
+    h("li", "", ol, "Add wifi_ssid / wifi_password to ESPHome secrets if they are not there yet.");
+    h("li", "", ol, "Install over Wi-Fi, then check the binary sensor in Home Assistant and watch the “Alarm match score” sensor for a few days.");
+    const hand = h("p", "note", body, "Maintaining your YAML by hand? Download the preset JSON, put it next to your YAML and use ");
+    h("code", "", hand, `template: ${id()}.json`);
+    h("span", "", hand, " — see the ");
+    const ex = h("a", "", hand, "example configuration") as HTMLAnchorElement;
+    ex.href = `${REPO_URL}/blob/main/examples/stamp-s3-inmp441-thermomix-tm6.yaml`; ex.target = "_blank"; ex.rel = "noopener";
+    h("span", "", hand, " and ");
+    const wi = h("a", "", hand, "wiring") as HTMLAnchorElement;
+    wi.href = `${REPO_URL}/blob/main/docs/wiring.md`; wi.target = "_blank"; wi.rel = "noopener";
+    h("span", "", hand, ".");
   }
 
   function renderGithub() {

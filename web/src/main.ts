@@ -1,26 +1,27 @@
-// Preset studio: teach the alarm detector a new appliance sound, in the browser.
+// Preset studio: home screen with two modes (ready-made preset / create a preset).
 import "./style.css";
 import { initWasm } from "./dsp";
-import { h, note, stepNav } from "./helpers";
-import { clearSession, freshState, loadSession, peekSession, saveSession } from "./store";
+import { h, note } from "./helpers";
+import { clearSession, freshState, loadSession, peekSession, saveSession, uid } from "./store";
 import { sessionStatusElement, setSessionStatus } from "./session";
-import { renderBuild } from "./views/build";
-import { renderEvaluate } from "./views/evaluate";
-import { renderExamples } from "./views/examples";
-import { renderExport } from "./views/exportView";
-import { renderRecordings } from "./views/recordings";
+import { renderUsePreset } from "./views/usePreset";
+import { getCreateStep, renderCreate, setCreateStep } from "./views/createPreset";
+import { renderHome } from "./views/home";
+import { DeviceSettings, loadDeviceSettings, loadMode, saveMode, StudioMode } from "./device";
+import { validateCaptureClips } from "./importClips";
 
 const s = freshState();
-
-const steps = ["Recordings", "Examples", "Build", "Evaluate", "Export"] as const;
-let current = 0;
+const dev: DeviceSettings = loadDeviceSettings();
+let mode: StudioMode = loadMode();
 
 async function boot() {
   const app = document.getElementById("app")!;
   app.innerHTML = "";
   const header = h("header", "", app);
   const titleRow = h("div", "title-row", header);
-  h("h1", "", titleRow, "Preset studio");
+  const title = h("h1", "home-link", titleRow, "Preset studio") as HTMLElement;
+  title.title = "Back to the home screen";
+  title.onclick = () => { setMode("home"); };
   const themeBtn = h("button", "theme-toggle", titleRow);
   const isLight = () => document.documentElement.dataset.theme === "light";
   const themeLabel = () => {
@@ -30,45 +31,47 @@ async function boot() {
   };
   themeLabel();
   h("p", "muted", header, "Teach the alarm detector a new appliance sound. All processing happens on your device — audio never leaves this page.");
-  const nav = h("nav", "tabs", app);
-  const statusRow = h("div", "status-row", app);
-  const status = h("span", "muted", statusRow, "Loading the detector (WebAssembly)…");
-  statusRow.appendChild(sessionStatusElement());
   const banner = h("div", "", app);
   const main = h("main", "", app);
   const foot = h("footer", "muted", app,
     "Static site, no tracking, no uploads. The DSP is the firmware code (detector_core.cpp) compiled to WebAssembly.");
 
+  const statusRow = h("div", "status-row", app);
+  const status = h("span", "muted", statusRow, "Loading the detector (WebAssembly)…");
+  void foot;
+  statusRow.appendChild(sessionStatusElement());
+
+  const setMode = (m: StudioMode) => {
+    mode = m;
+    saveMode(m);
+    render();
+  };
+
   const render = () => {
-    nav.innerHTML = "";
-    steps.forEach((name, i) => {
-      const b = h("button", i === current ? "tab active" : "tab", nav, `${i + 1} · ${name}`);
-      b.onclick = () => { current = i; render(); };
-    });
     main.innerHTML = "";
     const wrap = h("section", "", main);
     const refresh = () => render();
-    const go = (i: number) => { current = i; render(); window.scrollTo({ top: 0, behavior: "smooth" }); };
     try {
-      if (current === 0) renderRecordings(wrap, s, { refresh });
-      else if (current === 1) renderExamples(wrap, s, refresh);
-      else if (current === 2) renderBuild(wrap, s, refresh);
-      else if (current === 3) renderEvaluate(wrap, s, refresh);
-      else renderExport(wrap, s, refresh);
-      const blocked = [
-        !s.recordings.length ? "Load a recording first." : !s.examples.length ? "Mark at least one example first." : undefined,
-        !s.examples.length ? "Mark or accept at least one example first." : undefined,
-        !s.template ? "Build the template first." : undefined,
-        undefined,
-      ][current];
+      if (mode === "home") {
+        renderHome(wrap, (m) => setMode(m));
+      } else if (mode === "use") {
+        const back = h("div", "row", wrap);
+        const b = h("button", "secondary", back, "← Home");
+        b.onclick = () => setMode("home");
+        const body = h("div", "", wrap);
+        renderUsePreset(body, dev, refresh);
+      } else {
+        const back = h("div", "row", wrap);
+        const b = h("button", "secondary", back, "← Home");
+        b.onclick = () => setMode("home");
+        const body = h("div", "", wrap);
+        renderCreate(body, s, dev, { refresh, rerenderCreate: () => render() });
+      }
       autosave.schedule();
-      stepNav(wrap, {
-        back: current > 0 ? { label: steps[current - 1], go: () => go(current - 1) } : undefined,
-        next: current < steps.length - 1 ? { label: `Next: ${steps[current + 1]}`, go: () => go(current + 1), blockedReason: blocked } : undefined,
-      });
     } catch (e) {
       note(wrap, `Something went wrong: ${e}`);
     }
+    void getCreateStep;
   };
 
   try {
@@ -82,8 +85,11 @@ async function boot() {
       render();
     };
     render();
+    setupImport(banner, () => {
+      setCreateStep(2);
+      setMode("create");
+    });
     await offerRestore(banner, render);
-    // Changes that don't re-render (typing in forms) also trigger a save.
     document.addEventListener("change", () => autosave.schedule());
   } catch (e) {
     status.textContent = `Could not start the detector: ${e}`;
@@ -95,7 +101,6 @@ if ((localStorage.getItem("theme") ?? "dark") === "light") {
 }
 
 void boot();
-
 
 /** Debounced automatic saving to IndexedDB. Paused until the user has answered the
  *  restore prompt, so an empty page never overwrites a saved session by accident. */
@@ -120,7 +125,14 @@ const autosave = (() => {
 async function offerRestore(banner: HTMLElement, render: () => void) {
   let saved = null;
   try { saved = await peekSession(); } catch { /* IndexedDB unavailable */ }
-  if (!saved || !saved.recordings) { autosave.enable(true); return; }
+  if (!saved || !saved.recordings) {
+    // No session: show the home screen.
+    mode = "home";
+    saveMode(mode);
+    render();
+    autosave.enable(true);
+    return;
+  }
   const when = saved.savedAt ? new Date(saved.savedAt).toLocaleString() : "earlier";
   const box = h("div", "restore-banner", banner);
   h("strong", "", box, "Continue where you left off?");
@@ -136,6 +148,9 @@ async function offerRestore(banner: HTMLElement, render: () => void) {
       box.remove();
       autosave.enable();
       setSessionStatus(msg);
+      mode = "create";
+      saveMode(mode);
+      setCreateStep(2);
       render();
     } catch (e) {
       cont.disabled = false;
@@ -148,7 +163,6 @@ async function offerRestore(banner: HTMLElement, render: () => void) {
     autosave.enable(true);
     setSessionStatus("Started a new session.");
   };
-  // Starting new work without answering = start fresh.
   const onNewWork = () => {
     if (!box.isConnected || !s.recordings.length) return;
     box.remove();
@@ -157,4 +171,39 @@ async function offerRestore(banner: HTMLElement, render: () => void) {
   };
   document.addEventListener("click", () => setTimeout(onNewWork, 0));
   document.addEventListener("change", () => setTimeout(onNewWork, 0));
+}
+
+/** Listen for clips posted by the temporary recording firmware page (#import + opener). */
+function setupImport(banner: HTMLElement, onImported: () => void) {
+  if (!window.location.hash.includes("import") || !window.opener) return;
+  const READY = { type: "asd-studio-ready", version: 1 };
+  const sendReady = () => {
+    try { (window.opener as Window).postMessage(READY, "*"); } catch { /* ignore */ }
+  };
+  sendReady();
+  const timer = window.setInterval(sendReady, 500);
+  window.setTimeout(() => window.clearInterval(timer), 15000);
+
+  window.addEventListener("message", (ev) => {
+    if (ev.source !== window.opener) return;
+    const res = validateCaptureClips(ev.data);
+    if (!res.ok) return;
+    window.clearInterval(timer);
+    const { deviceName, friendlyName, clips } = res.value;
+    const box = h("div", "restore-banner", banner);
+    h("strong", "", box, `Import ${clips.length} clip(s) from ${friendlyName}?`);
+    const row = h("div", "row", box);
+    const imp = h("button", "primary", row, "Import");
+    const ign = h("button", "", row, "Ignore");
+    imp.onclick = () => {
+      for (const c of clips) {
+        s.recordings.push({ id: uid(), name: `${friendlyName} · ${c.name}`, pcm: new Int16Array(c.pcm.slice(0)) });
+      }
+      try { (ev.source as Window).postMessage({ type: "asd-capture-received", version: 1, count: clips.length }, "*"); } catch { /* ignore */ }
+      box.remove();
+      setSessionStatus(`Imported ${clips.length} clip(s) from ${deviceName}.`);
+      onImported();
+    };
+    ign.onclick = () => box.remove();
+  });
 }

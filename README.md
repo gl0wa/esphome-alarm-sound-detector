@@ -6,7 +6,8 @@ An [ESPHome](https://esphome.io) external component that **listens for an
 appliance's alarm sound and tells Home Assistant** — "the Thermomix is done",
 "the rice cooker finished", and so on.
 
-- **Local:** detection runs on the ESP32. No cloud, no audio streamed anywhere.
+- **Local and private:** detection runs on the ESP32. The normal firmware never
+  sends sound anywhere — Home Assistant only receives "alarm on/off".
 - **Small:** a spectral template matcher (~10 KB per sound, a few % CPU on an
   ESP32-S3, no PSRAM needed).
 - **Presets:** one line of YAML for supported appliances; a browser-based
@@ -34,16 +35,43 @@ with an M5Stack Stamp S3 — see [wiring and placement](docs/wiring.md).
 
 ![Wiring](assets/wiring.svg)
 
-## Quick start
+## Getting started — pick your path
 
-1. Wire the microphone ([docs/wiring.md](docs/wiring.md)).
-2. Copy [`examples/stamp-s3-inmp441-thermomix-tm6.yaml`](examples/stamp-s3-inmp441-thermomix-tm6.yaml)
-   into your ESPHome configuration directory and add `wifi_ssid`,
-   `wifi_password` and `api_encryption_key` to your `secrets.yaml`.
-3. Install it from the ESPHome dashboard (first time over USB, then OTA).
-4. Add the discovered device in Home Assistant.
+Both paths start in the **[preset studio](https://gl0wa.github.io/esphome-alarm-sound-detector/)**,
+which generates the complete ESPHome YAML for you (defaults for the reference
+hardware, your own pins if needed). Wire the microphone first: [docs/wiring.md](docs/wiring.md).
 
-The essential part of the configuration:
+### A. Use a ready-made preset (your appliance is in the catalog)
+
+1. In the studio choose **Use a ready-made preset**, pick your appliance.
+2. Copy the generated YAML into the ESPHome dashboard (**New device** → paste)
+   and install it (first time over USB, then over Wi-Fi). Make sure your ESPHome
+   `secrets.yaml` has `wifi_ssid` and `wifi_password`.
+3. Add the discovered device in Home Assistant.
+
+That's all — this firmware never sends sound off the device.
+
+### B. Create a preset for your appliance
+
+1. In the studio choose **Create a preset for your appliance** and install the
+   generated **recording firmware**. This is a *temporary* firmware: it is the
+   only one that can send sound, and only to your own browser, only while you
+   press Record.
+2. Scan the QR code with your phone (it contains the device address and a
+   private key, so there is nothing to type), record the alarm a few times plus
+   some everyday background sounds, and tap **Send to the preset studio**.
+3. Mark the alarm in the studio, let it find the other occurrences, build and
+   test the preset.
+4. Install the generated **normal firmware**, which now contains your preset —
+   the device is back in private mode. Optionally share the preset on GitHub.
+
+Details: [docs/preset_authoring.md](docs/preset_authoring.md).
+
+### Writing the YAML by hand
+
+Prefer to configure everything yourself? Start from
+[`examples/stamp-s3-inmp441-thermomix-tm6.yaml`](examples/stamp-s3-inmp441-thermomix-tm6.yaml).
+The essential part:
 
 ```yaml
 external_components:
@@ -55,7 +83,7 @@ alarm_sound_detector:
     microphone:
       microphone: mic            # an i2s_audio microphone at 16 kHz
       bits_per_sample: 16
-    template: vorwerk_thermomix_tm6_alarm
+    template: vorwerk_thermomix_tm6_alarm   # a bundled preset, a JSON file, or an inline preset
 
 binary_sensor:
   - platform: alarm_sound_detector
@@ -93,13 +121,17 @@ the alarm is *still ringing* after a configurable delay is included:
 
 ## Privacy and security
 
-- The production firmware never transmits audio; only entity states go to Home
+- The normal firmware never transmits audio; only entity states go to Home
   Assistant over the encrypted ESPHome API.
-- The development-only `audio_capture` component (used to collect recordings
-  for new presets) streams microphone audio over the LAN, authenticated with a
-  pre-shared key and AES-256-GCM encrypted. It is off by default and should
-  not be left in a permanently installed device. See
-  [docs/data_collection.md](docs/data_collection.md).
+- The temporary **recording firmware** (`capture_server` component) sends audio
+  only while you press Record in its page, only to a browser holding the
+  capture key from the studio's QR code, and only within your home network.
+  Browsers cannot encrypt traffic to a device without a trusted certificate,
+  so this audio crosses your Wi-Fi unencrypted — which is why the recording
+  firmware is meant to be installed only for a recording session. A
+  "Sound capture active" sensor shows in Home Assistant whenever it streams.
+- For developers there is also an encrypted (AES-256-GCM) capture path with a
+  Python recorder: [docs/data_collection.md](docs/data_collection.md).
 - Presets contain only an averaged spectral fingerprint, never recordings.
 
 ## Known limitations
@@ -120,8 +152,10 @@ the alarm is *still ringing* after a configurable delay is included:
 
 - `components/alarm_sound_detector/` — the component (portable C++ core +
   ESPHome wrapper) and bundled presets.
-- `components/audio_capture/`, `tools/capture/` — development-only encrypted
-  audio capture and recorder ([protocol](docs/capture_protocol.md)).
+- `components/capture_server/` — the temporary recording firmware's web
+  recorder (page served by the device, hands clips to the studio).
+- `components/audio_capture/`, `tools/capture/` — developer-only encrypted
+  audio capture and Python recorder ([protocol](docs/capture_protocol.md)).
 - `tools/detector/` — Python reference implementation (the specification),
   preset builder and evaluator.
 - `web/` — the browser preset studio (the C++ core compiled to WebAssembly).

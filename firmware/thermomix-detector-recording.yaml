@@ -1,0 +1,15 @@
+# Reference device in TEMPORARY recording mode: the normal firmware plus the
+# capture_server recorder page. Install only for a recording session, then
+# reinstall thermomix-detector.yaml.
+packages:
+  base: !include thermomix-detector.yaml
+
+capture_server:
+  microphone:
+    microphone: mic
+    bits_per_sample: 16
+  key: !secret capture_key
+
+binary_sensor:
+  - platform: capture_server
+    name: "Sound capture active"

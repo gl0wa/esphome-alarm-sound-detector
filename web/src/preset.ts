@@ -110,12 +110,12 @@ export interface BundledPreset {
   doc: Record<string, unknown> | null;
 }
 
-export async function loadBundledIndex(base: string): Promise<{ id: string; name: string }[]> {
+export async function loadBundledIndex(base: string): Promise<{ id: string; name: string; model?: string }[]> {
   try {
     const r = await fetch(`${base}presets/index.json`);
     if (!r.ok) return [];
     const j = await r.json();
-    return (j.presets ?? []).map((p: { id: string; name: string }) => ({ id: p.id, name: p.name }));
+    return (j.presets ?? []).map((p: { id: string; name: string; model?: string }) => ({ id: p.id, name: p.name, model: p.model }));
   } catch { return []; }
 }
 
