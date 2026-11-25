@@ -73,10 +73,16 @@ All options: [component reference](components/alarm_sound_detector/README.md).
 | `vorwerk_thermomix_tm6_alarm` (alias `thermomix_tm6`) | Vorwerk Thermomix TM6 | End-of-step / finished chime | One household, one volume setting |
 
 The catalog is [`components/alarm_sound_detector/presets/`](components/alarm_sound_detector/presets/).
-Your appliance is not listed? Record it and build a preset in the
-[preset studio](https://gl0wa.github.io/esphome-alarm-sound-detector/) —
-everything runs in your browser — then use the exported file directly or
-contribute it: [docs/preset_authoring.md](docs/preset_authoring.md).
+
+<a href="https://gl0wa.github.io/esphome-alarm-sound-detector/"><img src="assets/studio-qr.svg" width="130" align="right" alt="QR code linking to the preset studio"></a>
+
+**Your appliance is not listed?** Record it and build a preset in the
+**[preset studio](https://gl0wa.github.io/esphome-alarm-sound-detector/)** —
+everything runs in your browser, also on a phone (scan the QR code to open it
+next to the appliance). Then use the exported file directly or contribute it:
+[docs/preset_authoring.md](docs/preset_authoring.md).
+
+<br clear="right">
 
 ## Home Assistant
 

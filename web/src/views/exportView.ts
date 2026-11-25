@@ -1,6 +1,6 @@
 // Step 5: export the preset (JSON + YAML + labels), session save/restore.
 import { buildPresetDoc, buildYamlSnippet, PresetMeta, validatePreset } from "../preset";
-import { button, download, field, h, note } from "../helpers";
+import { button, download, field, h, note, textArea } from "../helpers";
 import { clearSession, loadSession, saveSession, State } from "../store";
 import { REPO_URL } from "../help";
 
@@ -25,17 +25,18 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void) {
   const fMan = field(g, "manufacturer", m.manufacturer, { onChange: (v) => { m.manufacturer = v; check(); } });
   const fMod = field(g, "model", m.model, { onChange: (v) => { m.model = v; check(); } });
   const fSnd = field(g, "sound", m.sound, { onChange: (v) => { m.sound = v; check(); } });
-  const fDesc = field(g, "description", m.description, { onChange: (v) => { m.description = v; } });
+
   const fAl = field(g, "aliases (comma separated)", m.aliases, { onChange: (v) => { m.aliases = v; } });
   const fTest = field(g, "tested against (comma separated)", m.testedAgainst, { onChange: (v) => { m.testedAgainst = v; } });
   const fVal = field(g, "validation", m.validation, { onChange: (v) => { m.validation = v; check(); } });
-  const fNotes = field(g, "notes", m.notes, { onChange: (v) => { m.notes = v; } });
+  const fDesc = textArea(g, "description", m.description, { rows: 3, onChange: (v) => { m.description = v; } });
+  const fNotes = textArea(g, "notes", m.notes, { rows: 3, onChange: (v) => { m.notes = v; } });
   void [fName, fMan, fMod, fSnd, fDesc, fAl, fTest, fVal, fNotes];
-  const ph: [HTMLInputElement, string][] = [
+  const ph: [HTMLInputElement | HTMLTextAreaElement, string][] = [
     [fId, "e.g. bosch_serie6_dishwasher_end"], [fName, "e.g. Bosch Serie 6 dishwasher – end of programme"],
     [fMan, "e.g. Bosch"], [fMod, "e.g. SMS6ECI03E"], [fSnd, "e.g. end-of-programme melody"],
-    [fDesc, "what the sound is and when it plays"], [fAl, "optional"],
-    [fTest, "e.g. speech, TM6 chime, microwave beep"], [fVal, "e.g. one household, volume high"], [fNotes, "optional"],
+    [fDesc, "What the sound is and when the appliance plays it (e.g. “three-tone melody at the end of every programme, repeats every minute until the door is opened”)"], [fAl, "optional"],
+    [fTest, "e.g. speech, TM6 chime, microwave beep"], [fVal, "e.g. one household, volume high"], [fNotes, "Optional: anything a reviewer or user should know (volume setting used, microphone distance, known look-alike sounds)"],
   ];
   for (const [inp, text] of ph) inp.placeholder = text;
   for (const inp of [fId, fName, fMan, fMod, fSnd, fDesc, fAl, fTest, fVal, fNotes]) inp.addEventListener("input", () => check());
@@ -89,7 +90,13 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void) {
   function renderEsphome() {
     const ol = h("ol", "steps-list", body);
     h("li", "", ol, "Download the preset file and put it next to your device's YAML in the ESPHome config folder.");
-    h("li", "", ol, "Add the snippet below to the device YAML (it also needs an i2s_audio microphone at 16 kHz, see the example config in the repository).");
+    const li2 = h("li", "", ol, "Add the snippet below to the device YAML. The device also needs Wi-Fi, the API and an I2S microphone running at 16 kHz — start from the ");
+    const ex = h("a", "", li2, "complete example configuration") as HTMLAnchorElement;
+    ex.href = `${REPO_URL}/blob/main/examples/stamp-s3-inmp441-thermomix-tm6.yaml`; ex.target = "_blank"; ex.rel = "noopener";
+    h("span", "", li2, " (microphone pins and settings included) and see ");
+    const wi = h("a", "", li2, "wiring") as HTMLAnchorElement;
+    wi.href = `${REPO_URL}/blob/main/docs/wiring.md`; wi.target = "_blank"; wi.rel = "noopener";
+    h("span", "", li2, ". Replace its template: line with your preset file name.");
     h("li", "", ol, "Install the firmware, then watch the “Alarm match score” sensor in Home Assistant for a few days.");
     const row = h("div", "row", body);
     button(row, "Download preset JSON", () => { downloadPreset(); }, "primary");

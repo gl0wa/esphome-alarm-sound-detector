@@ -62,3 +62,16 @@ export function stepNav(parent: HTMLElement, opts: {
     b.disabled = !!opts.next.blockedReason;
   }
 }
+
+/** Multi-line text field spanning the whole form row. */
+export function textArea(parent: HTMLElement, label: string, value: string, opts?: {
+  rows?: number; onChange?: (v: string) => void;
+}): HTMLTextAreaElement {
+  const wrap = h("label", "field wide", parent);
+  h("span", "", wrap, label);
+  const ta = h("textarea", "", wrap) as HTMLTextAreaElement;
+  ta.rows = opts?.rows ?? 3;
+  ta.value = value;
+  if (opts?.onChange) ta.onchange = () => opts.onChange!(ta.value);
+  return ta;
+}

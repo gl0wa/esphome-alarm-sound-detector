@@ -119,7 +119,7 @@ export class SpecView {
       return b;
     };
     this.dragBtns = {
-      scroll: mkd("scroll", "✋ Scroll", "Dragging moves along the recording (long-press to select)"),
+      scroll: mkd("scroll", "✋ Scroll", "Dragging moves along the recording (on touch screens, long-press to select)"),
       select: mkd("select", "↔ Select", "Dragging selects a time range"),
     };
     const zoom = el("span", "seg", bar);
@@ -141,10 +141,23 @@ export class SpecView {
     this.scroll.addEventListener("scroll", () => this.schedule());
     new ResizeObserver(() => this.schedule()).observe(this.scroll);
     // Ctrl/⌘ + wheel (or trackpad pinch) zooms around the pointer.
+    // Wheel / trackpad: Ctrl/⌘ (or pinch) zooms; scrolling moves along the recording.
+    // Vertical scrolling is turned into horizontal movement while there is room to
+    // move, so a normal two-finger swipe works; at either end the page scrolls.
     this.scroll.addEventListener("wheel", (e) => {
-      if (!e.ctrlKey && !e.metaKey) return;
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.scroll.clientWidth : 1;
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        this.zoomAround(this.pxPerSec * Math.exp(-e.deltaY * unit * 0.01), e.clientX);
+        return;
+      }
+      const dx = e.deltaX * unit, dy = e.deltaY * unit;
+      if (Math.abs(dy) <= Math.abs(dx)) return; // horizontal swipe: native scrolling
+      const max = this.scroll.scrollWidth - this.scroll.clientWidth;
+      const sl = this.scroll.scrollLeft;
+      if ((dy > 0 && sl >= max - 1) || (dy < 0 && sl <= 0)) return; // at the edge: let the page scroll
       e.preventDefault();
-      this.zoomAround(this.pxPerSec * Math.exp(-e.deltaY * 0.01), e.clientX);
+      this.scroll.scrollLeft = Math.max(0, Math.min(max, sl + dy));
     }, { passive: false });
     this.installGestures();
     this.updateButtons();
@@ -205,7 +218,7 @@ export class SpecView {
       const dx = e.clientX - g.x0, moved = Math.abs(dx) > (g.isMouse ? 3 : 8) || Math.abs(e.clientY - g.y0) > 8;
       if (g.kind === "pending" && moved) {
         clearTimeout(g.timer);
-        if (g.isMouse || this.dragMode === "select") startSelect();
+        if (this.dragMode === "select") startSelect();
         else g.kind = "pan";
       }
       if (g.kind === "pan") this.scroll.scrollLeft = Math.max(0, g.scroll0 - dx);
@@ -401,9 +414,10 @@ export class SpecView {
     if (this.dragBtns) for (const m of ["scroll", "select"] as DragMode[]) this.dragBtns[m].classList.toggle("on", this.dragMode === m);
     if (this.hintEl) {
       this.hintEl.textContent = this.dragMode === "select"
-        ? "Drag across a sound to select it. Tap/click to play from there. Drag the edges of a marked part to resize it."
+        ? "Drag across a sound to select it; scroll or swipe to move along, Ctrl/⌘ + scroll or pinch to zoom. Tap/click to play from there. Drag the edges of a marked part to resize it."
         : (COARSE ? "Swipe to move, pinch to zoom, long-press then drag to select. Tap to play from there. Drag the edges of a marked part to resize it."
-                  : "Drag to move along the recording (with a mouse, dragging selects). Click to play from there.");
+                  : "Drag or scroll (two-finger swipe) to move along the recording; Ctrl/⌘ + scroll or pinch zooms. Click to play from there.");
+      this.canvas.style.cursor = this.dragMode === "scroll" ? "grab" : "crosshair";
     }
   }
 
