@@ -24,12 +24,11 @@ Private, household-specific operational notes live in `local/PRIVATE_NOTES.md`
    several detectors per microphone, single-sound mode; TM6 behaviour bit-identical.
 5. [x] Home Assistant: entities + "notify if still ringing" blueprint (docs/home_assistant.md);
    in use; the user reports it works (no recorded end-to-end notification test by the agent).
-6. [~] Public release: MIT license, README, wiring, example config, CI done.
-   Browser preset studio done (web/, WASM build of detector_core, Pages workflow); verified
-   on the real TM6 session (both episodes, 23/23 units; studio template == Python tools
-   with 16-bit input). Tools now model the 16-bit device input; TM6 preset rebuilt that way.
-   Pending: rice-cooker preset (user will do it with the studio later), final history scan +
-   rewrite (strip private notes, unify authorship), user go-ahead to make public.
+6. [x] Public release (2026-11-25): github.com/gl0wa/esphome-alarm-sound-detector (MIT),
+   preset studio on GitHub Pages (gl0wa.github.io/esphome-alarm-sound-detector), CI green
+   (pytest, studio WASM tests, firmware + examples compile). Studio verified on the real TM6
+   session; tools model 16-bit device input and the TM6 preset was rebuilt that way.
+   Next: rice-cooker preset via the studio (user), more field validation of the TM6 preset.
 
 ## Decisions
 - ESP-IDF; detector at 16 kHz (TM6 content < 5 kHz); production firmware has no audio
