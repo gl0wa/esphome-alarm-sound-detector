@@ -5,7 +5,11 @@
 // tools/detector/ref.py (see tests/detector/test_equivalence.py).
 //
 // Usage:
-//   detector_cli audio.f32 tmpl.i8 frames bins [threshold near period_s tol_s min_rep]
+//   detector_cli audio.f32 tmpl.i8 frames bins [threshold near period_s tol_s min_rep
+//                                                [refractory_s release_s bin_lo bin_hi]]
+//
+// period_s <= 0 selects single (no-periodicity) mode. release_s <= 0 means
+// "2*period + 1" (requires period_s > 0). bin_lo/bin_hi default to 13/144.
 //
 // Output (stdout):
 //   SCORE <frame_1based> <score>
@@ -60,7 +64,7 @@ int main(int argc, char **argv) {
   if (argc < 5) {
     std::fprintf(stderr,
                  "usage: %s audio.f32 tmpl.i8 frames bins "
-                 "[threshold near period_s tol_s min_rep]\n",
+                 "[threshold near period_s tol_s min_rep [refractory_s release_s bin_lo bin_hi]]\n",
                  argv[0]);
     return 2;
   }
@@ -73,6 +77,16 @@ int main(int argc, char **argv) {
   const float period = argc > 7 ? static_cast<float>(std::atof(argv[7])) : 3.125f;
   const float tol = argc > 8 ? static_cast<float>(std::atof(argv[8])) : 0.25f;
   const uint8_t min_rep = argc > 9 ? static_cast<uint8_t>(std::atoi(argv[9])) : 2;
+  const float refractory = argc > 10 ? static_cast<float>(std::atof(argv[10])) : 1.5f;
+  float release = argc > 11 ? static_cast<float>(std::atof(argv[11])) : 0.0f;
+  if (!(release > 0.0f)) {
+    // Default: 2*period + 1 (TM6 rule). Requires period_s > 0.
+    release = 2.0f * period + 1.0f;
+  }
+  const auto bin_lo = static_cast<uint16_t>(
+      argc > 12 ? std::atoi(argv[12]) : esphome::alarm_sound_detector::DET_BIN_LO);
+  const auto bin_hi = static_cast<uint16_t>(
+      argc > 13 ? std::atoi(argv[13]) : esphome::alarm_sound_detector::DET_BIN_HI);
 
   std::vector<uint8_t> audio_raw, tmpl_raw;
   if (!read_file(audio_path, audio_raw) || audio_raw.size() % 4 != 0) {
@@ -90,7 +104,9 @@ int main(int argc, char **argv) {
 
   StreamingDetector det;
   if (!det.begin(reinterpret_cast<const int8_t *>(tmpl_raw.data()), frames, bins, threshold, near,
-                 period, tol, min_rep)) {
+                 period, tol, min_rep,
+                 esphome::alarm_sound_detector::DET_PEAK_WINDOW_S, refractory, release, bin_lo,
+                 bin_hi)) {
     std::fprintf(stderr, "detector begin() failed\n");
     return 1;
   }

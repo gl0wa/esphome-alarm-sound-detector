@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/thermomix-alert-detector/preset.schema.json",
+  "title": "alarm_sound_detector preset (format v2)",
+  "description": "One appliance alarm sound: spectral template plus the detection parameters tuned for it.",
+  "type": "object",
+  "required": [
+    "format", "id", "name", "manufacturer", "model", "sound",
+    "sample_rate", "n_fft", "hop", "bin_lo", "bin_hi",
+    "frames", "bins", "data_int8_b64", "detection", "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": 2 },
+    "id": {
+      "type": "string", "minLength": 1,
+      "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$",
+      "description": "Snake-case preset id, e.g. vorwerk_thermomix_tm6_alarm."
+    },
+    "aliases": {
+      "type": "array", "items": { "type": "string" }, "default": []
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "manufacturer": { "type": "string", "minLength": 1 },
+    "model": { "type": "string", "minLength": 1 },
+    "sound": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "sample_rate": { "const": 16000 },
+    "n_fft": { "const": 512 },
+    "hop": { "const": 256 },
+    "bin_lo": { "type": "integer", "minimum": 1, "maximum": 255 },
+    "bin_hi": { "type": "integer", "minimum": 1, "maximum": 255 },
+    "frames": { "type": "integer", "minimum": 1 },
+    "bins": { "type": "integer", "minimum": 1 },
+    "data_int8_b64": { "type": "string", "minLength": 1 },
+    "detection": {
+      "type": "object",
+      "required": ["threshold", "near_threshold", "min_repetitions",
+                   "period_s", "period_tolerance_s", "refractory_s", "release_s"],
+      "additionalProperties": false,
+      "properties": {
+        "threshold": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "near_threshold": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "min_repetitions": { "type": "integer", "minimum": 1, "maximum": 255 },
+        "period_s": {
+          "description": "Expected repetition interval, or null for single/no-periodicity mode.",
+          "anyOf": [{ "type": "number", "exclusiveMinimum": 0 }, { "type": "null" }]
+        },
+        "period_tolerance_s": { "type": "number", "minimum": 0 },
+        "refractory_s": { "type": "number", "minimum": 0 },
+        "release_s": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["n_examples", "tested_against", "validation"],
+      "additionalProperties": false,
+      "properties": {
+        "n_examples": { "type": "integer", "minimum": 1 },
+        "tested_against": { "type": "array", "items": { "type": "string" } },
+        "validation": { "type": "string", "minLength": 1 },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

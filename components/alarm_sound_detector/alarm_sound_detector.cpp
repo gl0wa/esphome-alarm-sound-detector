@@ -42,7 +42,9 @@ void AlarmSoundDetector::setup() {
 
   if (!this->detector_.begin(this->tmpl_data_, this->tmpl_frames_, this->tmpl_bins_,
                              this->threshold_, this->near_threshold_, this->period_s_,
-                             this->period_tol_s_, this->min_repetitions_)) {
+                             this->period_tol_s_, this->min_repetitions_, DET_PEAK_WINDOW_S,
+                             this->refractory_s_, this->release_s_, this->bin_lo_,
+                             this->bin_hi_)) {
     this->setup_error_ = "detector core rejected the template/parameters";
     ESP_LOGE(TAG, "%s; detector disabled", this->setup_error_.c_str());
     this->mark_failed();
@@ -113,11 +115,18 @@ void AlarmSoundDetector::setup() {
 
 void AlarmSoundDetector::dump_config() {
   ESP_LOGCONFIG(TAG, "Alarm Sound Detector:");
-  ESP_LOGCONFIG(TAG, "  Template: '%s' (%u frames x %u bins)", this->tmpl_name_.c_str(),
-                this->tmpl_frames_, this->tmpl_bins_);
-  ESP_LOGCONFIG(TAG, "  Threshold: %.2f  Near: %.2f  Period: %.3fs +- %.3fs  Min repetitions: %u",
-                this->threshold_, this->near_threshold_, this->period_s_, this->period_tol_s_,
-                this->min_repetitions_);
+  ESP_LOGCONFIG(TAG, "  Template: '%s' (%u frames x %u bins, bins %u..%u)", this->tmpl_name_.c_str(),
+                this->tmpl_frames_, this->tmpl_bins_, this->bin_lo_, this->bin_hi_);
+  if (this->period_s_ > 0.0f) {
+    ESP_LOGCONFIG(TAG, "  Threshold: %.2f  Near: %.2f  Periodic: %.3fs +- %.3fs  Min rep: %u",
+                  this->threshold_, this->near_threshold_, this->period_s_, this->period_tol_s_,
+                  this->min_repetitions_);
+  } else {
+    ESP_LOGCONFIG(TAG, "  Threshold: %.2f  Near: %.2f  Single mode  Min rep: %u",
+                  this->threshold_, this->near_threshold_, this->min_repetitions_);
+  }
+  ESP_LOGCONFIG(TAG, "  Refractory: %.3fs  Release: %.3fs", this->refractory_s_,
+                this->release_s_);
   if (this->is_failed()) {
     ESP_LOGCONFIG(TAG, "  FAILED: %s", this->setup_error_.c_str());
     return;

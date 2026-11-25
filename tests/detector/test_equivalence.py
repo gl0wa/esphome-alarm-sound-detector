@@ -7,8 +7,9 @@ the reference functions in tools/detector/ref.py, and asserts:
 - per-frame NCC scores match within 0.01,
 - identical event sequences (types; times within 1 frame; scores within 0.01),
 - event-logic semantics: missed repetition (k=2), stray units, alarm_off
-  timing, min_repetitions=1 — both ref-vs-C++ on audio and deterministic
-  scripted-score unit tests of ref.StreamingDetector.
+  timing, min_repetitions=1, null-period chaining/pruning, single mode,
+  custom band and custom refractory/release — both ref-vs-C++ on audio and
+  deterministic scripted-score unit tests of ref.StreamingDetector.
 """
 import subprocess
 import sys
@@ -72,8 +73,8 @@ def make_audio(unit_times, total_s, distractors=True, seed=7):
     return x[:ref.N_FFT + ref.HOP * (nf - 1)]
 
 
-def build_template(x, unit_times, w=W):
-    feat = ref.above_floor(ref.frames_db(x))
+def build_template(x, unit_times, w=W, bin_lo=ref.BIN_LO, bin_hi=ref.BIN_HI):
+    feat = ref.above_floor(ref.frames_db(x, bin_lo, bin_hi))
     wins = []
     for u in unit_times:
         s = int(round(u * FPS))
@@ -94,10 +95,10 @@ def cli(tmp_path_factory):
     return out
 
 
-def run_ref(x, qtmpl, **kw):
-    det = ref.StreamingDetector(qtmpl, **kw)
+def run_ref(x, qtmpl, bin_lo=ref.BIN_LO, bin_hi=ref.BIN_HI, **kw):
+    det = ref.StreamingDetector(qtmpl, bin_lo=bin_lo, bin_hi=bin_hi, **kw)
     scores, events = {}, []
-    for i, row in enumerate(ref.frames_db(x)):
+    for i, row in enumerate(ref.frames_db(x, bin_lo, bin_hi)):
         ev = det.feed_frame_db(row)
         n = i + 1
         if n >= qtmpl.shape[0]:
@@ -106,15 +107,24 @@ def run_ref(x, qtmpl, **kw):
     return scores, events
 
 
-def run_cli(cli, tmp_path, x, qtmpl, **kw):
+def run_cli(cli, tmp_path, x, qtmpl, bin_lo=ref.BIN_LO, bin_hi=ref.BIN_HI, **kw):
     audio = tmp_path / "a.f32"
     tmpl = tmp_path / "t.i8"
     audio.write_bytes(np.ascontiguousarray(x, dtype=np.float32).tobytes())
     tmpl.write_bytes(np.ascontiguousarray(qtmpl).tobytes())
+    period = kw.get("period_s", 3.125)
+    period_arg = "-1" if period is None else str(period)
+    release = kw.get("release_s", None)
+    # CLI uses release <= 0 for "2*period + 1"; pass the resolved default
+    # explicitly so ref and CLI always receive identical parameters.
+    if release is None:
+        release = 2 * period + 1 if period is not None else 7.25
     args = [str(cli), str(audio), str(tmpl), str(qtmpl.shape[0]), str(qtmpl.shape[1]),
             str(kw.get("threshold", 0.55)), str(kw.get("near_threshold", 0.35)),
-            str(kw.get("period_s", 3.125)), str(kw.get("period_tol_s", 0.25)),
-            str(kw.get("min_repetitions", 2))]
+            period_arg, str(kw.get("period_tol_s", 0.25)),
+            str(kw.get("min_repetitions", 2)),
+            str(kw.get("refractory_s", 1.5)), str(release),
+            str(bin_lo), str(bin_hi)]
     r = subprocess.run(args, capture_output=True, text=True)
     assert r.returncode == 0, f"CLI failed:\n{r.stdout}\n{r.stderr}"
     scores, events = {}, []
@@ -239,6 +249,78 @@ def test_min_repetitions_1(cli, tmp_path):
             assert re_[i - 1][0] == "unit" and abs(re_[i - 1][1] - e[1]) < 1e-9
 
 
+def test_custom_band_matches(cli, tmp_path):
+    # Narrower band (bins 20..120 ~= 625-3750 Hz): template built and scored
+    # in that band must still agree between ref and C++.
+    lo, hi = 20, 120
+    units = [2.0, 2.0 + PERIOD, 2.0 + 2 * PERIOD]
+    x = make_audio(units, 30.0, distractors=False)
+    q = build_template(x, units[:2], bin_lo=lo, bin_hi=hi)
+    assert q.shape == (W, hi - lo + 1)
+    kw = dict(threshold=0.55)
+    rs, re_ = run_ref(x, q, bin_lo=lo, bin_hi=hi, **kw)
+    cs, ce = run_cli(cli, tmp_path, x, q, bin_lo=lo, bin_hi=hi, **kw)
+    assert_equivalent(rs, re_, cs, ce)
+    assert [e[0] for e in re_].count("alarm_on") == 1, re_
+
+
+def test_custom_refractory_and_release(cli, tmp_path):
+    # Shorter refractory (0.5 s) and shorter release (4 s): alarm_off must
+    # follow release_s, not the TM6 2*period+1 rule.
+    units = [2.0, 5.125, 8.25]
+    x = make_audio(units, 30.0, distractors=False)
+    q = build_template(x, units[:2])
+    kw = dict(threshold=0.55, refractory_s=0.5, release_s=4.0)
+    rs, re_ = run_ref(x, q, **kw)
+    cs, ce = run_cli(cli, tmp_path, x, q, **kw)
+    assert_equivalent(rs, re_, cs, ce)
+    off = [e for e in re_ if e[0] == "alarm_off"]
+    last_unit = max(e[1] for e in re_ if e[0] == "unit")
+    assert len(off) == 1
+    assert 4.0 < off[0][1] - last_unit <= 4.0 + 2 * FRAME_S + 1e-9
+
+
+def test_null_period_chains_without_periodicity(cli, tmp_path):
+    # Irregular spacing (2.0 s, 2.7 s gaps — off any period grid) still
+    # chains towards min_repetitions when period_s is None.
+    units = [2.0, 4.0, 6.7]
+    x = make_audio(units, 30.0, distractors=False)
+    q = build_template(x, units[:1])
+    kw = dict(threshold=0.55, period_s=None, release_s=5.0, min_repetitions=3)
+    rs, re_ = run_ref(x, q, **kw)
+    cs, ce = run_cli(cli, tmp_path, x, q, **kw)
+    assert_equivalent(rs, re_, cs, ce)
+    kinds = [e[0] for e in re_]
+    assert kinds.count("unit") == 3, re_
+    assert kinds.count("alarm_on") == 1 and kinds.count("alarm_off") == 1, re_
+
+
+def test_null_period_prunes_stale_units(cli, tmp_path):
+    # Units 6 s apart with release_s 5 s never chain: no alarm.
+    units = [2.0, 8.0]
+    x = make_audio(units, 30.0, distractors=False)
+    q = build_template(x, units[:1])
+    kw = dict(threshold=0.55, period_s=None, release_s=5.0, min_repetitions=2)
+    rs, re_ = run_ref(x, q, **kw)
+    cs, ce = run_cli(cli, tmp_path, x, q, **kw)
+    assert_equivalent(rs, re_, cs, ce)
+    assert [e[0] for e in re_].count("alarm_on") == 0, re_
+    assert [e[0] for e in re_].count("unit") == 2, re_
+
+
+def test_single_mode_min_rep_1_no_period(cli, tmp_path):
+    # Single-sound mode: period None + min_rep 1, each unit alarms alone.
+    units = [2.0, 12.0]
+    x = make_audio(units, 30.0, distractors=False)
+    q = build_template(x, units[:1])
+    kw = dict(threshold=0.55, period_s=None, release_s=5.0, min_repetitions=1)
+    rs, re_ = run_ref(x, q, **kw)
+    cs, ce = run_cli(cli, tmp_path, x, q, **kw)
+    assert_equivalent(rs, re_, cs, ce)
+    kinds = [e[0] for e in re_]
+    assert kinds.count("alarm_on") == 2 and kinds.count("alarm_off") == 2, re_
+
+
 # ------------------------------------------------- deterministic logic tests ---
 
 def drive_scripted(scored, **kw):
@@ -250,8 +332,11 @@ def drive_scripted(scored, **kw):
     """
     Wframes = 8
     params = dict(threshold=0.55, near_threshold=0.35, period_s=1.6,
-                  period_tol_s=0.25, min_repetitions=2)
+                  period_tol_s=0.25, min_repetitions=2,
+                  bin_lo=13, bin_hi=16)
     params.update(kw)
+    if params.get("period_s") is None and "release_s" not in kw:
+        params["release_s"] = 1.0
     det = ref.StreamingDetector(np.zeros((Wframes, 4), dtype=np.int8), **params)
     evs = []
     calls = {"n": 0}
@@ -319,3 +404,38 @@ def test_logic_stray_during_alarm_keeps_chain():
     assert kinds == ["unit", "unit", "alarm_on", "unit", "alarm_off"], evs
     chained = [e for e in evs if e[0] == "unit"][1][1]
     assert evs[-1][1] - chained == 263 / FPS
+
+
+def test_logic_null_period_chains_off_grid_units():
+    # period None: two units an "unmusical" gap apart still chain, as long
+    # as the gap clears the refractory (94 frames) and fits the release.
+    evs = drive_scripted(unit_then_gap(100) + single_unit_tail() + [0.0] * 200,
+                         period_s=None, release_s=2.0, min_repetitions=2)
+    kinds = [e[0] for e in evs]
+    assert kinds.count("unit") == 2, evs
+    assert kinds.count("alarm_on") == 1, evs
+
+
+def test_logic_null_period_prunes_stale_chain():
+    # period None + release 1.0 s (62.5 frames): a second unit 200 frames
+    # later starts a fresh chain, so min_rep 2 never fires.
+    evs = drive_scripted(unit_then_gap(200) + single_unit_tail() + [0.0] * 200,
+                         period_s=None, release_s=1.0, min_repetitions=2)
+    kinds = [e[0] for e in evs]
+    assert kinds.count("unit") == 2 and "alarm_on" not in kinds, evs
+
+
+def test_logic_null_period_single_mode():
+    evs = drive_scripted(single_unit_tail() + [0.0] * 200,
+                         period_s=None, release_s=1.0, min_repetitions=1)
+    assert [e[0] for e in evs] == ["unit", "alarm_on", "alarm_off"], evs
+
+
+def test_logic_custom_release_sets_alarm_off():
+    # Periodic mode with release 2 s: off lands 125 frames after last unit.
+    evs = drive_scripted(unit_then_gap(100) + single_unit_tail() + [0.0] * 400,
+                         release_s=2.0)
+    off = [e for e in evs if e[0] == "alarm_off"]
+    units = [e for e in evs if e[0] == "unit"]
+    assert len(off) == 1 and [e[0] for e in evs].count("alarm_on") == 1
+    assert off[0][1] - units[-1][1] == 126 / FPS

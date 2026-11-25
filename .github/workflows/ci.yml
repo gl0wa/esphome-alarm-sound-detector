@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Python dependencies
+        run: pip install -r tools/requirements.txt
+      - name: Unit, protocol, preset and C++/Python equivalence tests
+        run: python -m pytest -q
+
+  firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [thermomix-detector.yaml, thermomix-detector-dev.yaml]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install ESPHome
+        run: pip install "esphome==2026.11.0"
+      - name: Dummy secrets
+        working-directory: firmware
+        run: |
+          cp secrets.example.yaml secrets.yaml
+          sed -i 's|^api_encryption_key:.*|api_encryption_key: "'"$(head -c32 /dev/urandom | base64)"'"|' secrets.yaml
+          sed -i 's|^capture_psk:.*|capture_psk: "ci-dummy-capture-psk-0123456789"|' secrets.yaml
+      - name: Validate
+        working-directory: firmware
+        run: esphome config ${{ matrix.config }} > /dev/null
+      - name: Compile
+        working-directory: firmware
+        run: esphome compile ${{ matrix.config }}

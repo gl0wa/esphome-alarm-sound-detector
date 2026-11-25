@@ -27,12 +27,30 @@ uint16_t reverse_bits(uint16_t x, int bits) {
 bool StreamingDetector::begin(const int8_t *template_data, uint16_t frames, uint16_t bins,
                               float threshold, float near_threshold, float period_s,
                               float period_tol_s, uint8_t min_repetitions, float peak_window_s,
-                              float refractory_s) {
-  if (template_data == nullptr || frames == 0 || bins != DET_N_BINS) {
+                              float refractory_s, float release_s, uint16_t bin_lo,
+                              uint16_t bin_hi) {
+  const bool has_period = det_has_period(period_s);
+  if (template_data == nullptr || frames == 0 || bins == 0) {
     return false;
   }
-  if (!(threshold > near_threshold) || period_s <= 0.0f || period_tol_s < 0.0f ||
-      min_repetitions == 0) {
+  if (bin_lo < 1 || bin_hi > DET_BIN_MAX || bin_lo > bin_hi) {
+    return false;
+  }
+  if (bins != static_cast<uint16_t>(bin_hi - bin_lo + 1)) {
+    return false;
+  }
+  if (!(threshold > near_threshold) || period_tol_s < 0.0f || min_repetitions == 0) {
+    return false;
+  }
+  if (has_period) {
+    if (!(period_s > 0.0f)) {
+      return false;
+    }
+  } else if (!(release_s > 0.0f)) {
+    // Single (no-periodicity) mode still needs an explicit release window.
+    return false;
+  }
+  if (!(refractory_s >= 0.0f) || !(release_s > 0.0f)) {
     return false;
   }
   const int64_t n = static_cast<int64_t>(frames) * bins;
@@ -53,13 +71,16 @@ bool StreamingDetector::begin(const int8_t *template_data, uint16_t frames, uint
   // exceptions disabled; an out-of-memory here aborts like elsewhere in ESPHome).
   pending_.clear();
   pending_.reserve(DET_N_FFT + DET_HOP);
-  floor_db_.assign(DET_N_BINS, 0.0f);
-  history_.assign(static_cast<size_t>(frames) * DET_N_BINS, 0);
+  floor_db_.assign(bins, 0.0f);
+  history_.assign(static_cast<size_t>(frames) * bins, 0);
   frame_re_.assign(DET_N_FFT, 0.0f);
   frame_im_.assign(DET_N_FFT, 0.0f);
 
   tmpl_ = template_data;
   template_frames_ = frames;
+  template_bins_ = bins;
+  bin_lo_ = bin_lo;
+  bin_hi_ = bin_hi;
   tmpl_sum_ = st;
   tmpl_denom_ = tden;
 
@@ -68,6 +89,7 @@ bool StreamingDetector::begin(const int8_t *template_data, uint16_t frames, uint
   period_s_ = period_s;
   period_tol_s_ = period_tol_s;
   min_repetitions_ = min_repetitions;
+  release_s_ = release_s;
   const double fps = static_cast<double>(DET_SAMPLE_RATE) / DET_HOP;
   peak_win_frames_ = static_cast<int64_t>(std::llround(peak_window_s * fps));
   refractory_frames_ = static_cast<int64_t>(std::llround(refractory_s * fps));
@@ -79,8 +101,7 @@ bool StreamingDetector::begin(const int8_t *template_data, uint16_t frames, uint
   cand_best_n_ = 0;
   last_unit_n_ = INT64_MIN / 4;
   alarm_ = false;
-  unit_count_ = 0;
-  last_unit_time_s_ = 0.0;
+  unit_times_.clear();
 
   fft_init_();
   ready_ = true;
@@ -177,10 +198,11 @@ void StreamingDetector::process_frame_() {
   }
   fft_(re, im);
 
+  const uint16_t n_bins = template_bins_;
   // First frame initialises the floor (ref.py: floor = db[0].copy()).
   const bool first = (frames_seen_ == 0);
-  for (uint16_t b = 0; b < DET_N_BINS; b++) {
-    const uint16_t k = DET_BIN_LO + b;
+  for (uint16_t b = 0; b < n_bins; b++) {
+    const uint16_t k = static_cast<uint16_t>(bin_lo_ + b);
     const double p = static_cast<double>(re[k]) * re[k] + static_cast<double>(im[k]) * im[k];
     const float db = 10.0f * static_cast<float>(std::log10(p + kEps));
     if (first) {
@@ -197,7 +219,7 @@ void StreamingDetector::process_frame_() {
     } else if (q > 255.0f) {
       q = 255.0f;
     }
-    history_[(frames_seen_ % template_frames_) * DET_N_BINS + b] = static_cast<uint8_t>(q);
+    history_[(frames_seen_ % template_frames_) * n_bins + b] = static_cast<uint8_t>(q);
   }
   frames_seen_++;
 
@@ -237,9 +259,9 @@ void StreamingDetector::process_frame_() {
       has_candidate_ = false;
     }
   }
-  if (alarm_ && (now_s - last_unit_time_s_) > 2.0 * period_s_ + 1.0) {
+  if (alarm_ && (now_s - unit_times_.back()) > release_s_) {
     alarm_ = false;
-    unit_count_ = 0;
+    unit_times_.clear();
     emit_(EventType::ALARM_OFF, now_s, 0.0f);
   }
 }
@@ -247,16 +269,17 @@ void StreamingDetector::process_frame_() {
 float StreamingDetector::score_window_() const {
   // ncc_quantized: window row j (oldest = 0) pairs with template row j.
   const auto W = static_cast<int64_t>(template_frames_);
-  const int64_t n = W * DET_N_BINS;
+  const auto B = static_cast<int64_t>(template_bins_);
+  const int64_t n = W * B;
   const int64_t base = static_cast<int64_t>(frames_seen_) - W;  // oldest frame's 0-based index
   int64_t sw = 0, sww = 0, swt = 0;
   const int8_t *t = tmpl_;
   for (int64_t j = 0; j < W; j++) {
     const auto slot = static_cast<size_t>((base + j) % W);
-    const uint8_t *row = &history_[slot * DET_N_BINS];
-    for (uint16_t b = 0; b < DET_N_BINS; b++) {
+    const uint8_t *row = &history_[slot * static_cast<size_t>(B)];
+    for (int64_t b = 0; b < B; b++) {
       const int64_t w = row[b];
-      const int64_t tv = t[j * DET_N_BINS + b];
+      const int64_t tv = t[j * B + b];
       sw += w;
       sww += w * w;
       swt += w * tv;
@@ -272,20 +295,26 @@ float StreamingDetector::score_window_() const {
 }
 
 void StreamingDetector::on_unit_(double t, float score) {
-  // Keep the chain of units spaced by ~k*period (k=1,2 allows one miss).
-  if (unit_count_ > 0) {
-    const double dt = t - last_unit_time_s_;
-    const double k = std::round(dt / period_s_);
-    if (!((k == 1.0 || k == 2.0) && std::fabs(dt - k * period_s_) <= period_tol_s_ * k)) {
-      if (alarm_) {
-        return;  // stray unit during an alarm: ignore, keep the chain
+  if (!det_has_period(period_s_)) {
+    // No periodicity check: chain any units within release_s of the chain.
+    while (!unit_times_.empty() && t - unit_times_.front() > release_s_) {
+      unit_times_.erase(unit_times_.begin());
+    }
+  } else {
+    // Keep the chain of units spaced by ~k*period (k=1,2 allows one miss).
+    if (!unit_times_.empty()) {
+      const double dt = t - unit_times_.back();
+      const double k = std::round(dt / period_s_);
+      if (!((k == 1.0 || k == 2.0) && std::fabs(dt - k * period_s_) <= period_tol_s_ * k)) {
+        if (alarm_) {
+          return;  // stray unit during an alarm: ignore, keep the chain
+        }
+        unit_times_.clear();
       }
-      unit_count_ = 0;
     }
   }
-  last_unit_time_s_ = t;
-  unit_count_++;
-  if (!alarm_ && unit_count_ >= min_repetitions_) {
+  unit_times_.push_back(t);
+  if (!alarm_ && unit_times_.size() >= min_repetitions_) {
     alarm_ = true;
     emit_(EventType::ALARM_ON, t, score);
   }

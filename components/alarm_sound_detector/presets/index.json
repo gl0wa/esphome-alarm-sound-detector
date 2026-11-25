@@ -1,0 +1,18 @@
+{
+ "presets": [
+  {
+   "id": "vorwerk_thermomix_tm6_alarm",
+   "aliases": [
+    "thermomix_tm6"
+   ],
+   "name": "Thermomix TM6 end-of-step chime",
+   "manufacturer": "Vorwerk",
+   "model": "Thermomix TM6",
+   "sound": "end-of-step chime",
+   "band": "406.25-4500 Hz (bins 13..144)",
+   "duration_s": 1.296,
+   "mode": "periodic 3.125s +- 0.25s, min_rep 2",
+   "validation": "single household, one TM6, one volume"
+  }
+ ]
+}

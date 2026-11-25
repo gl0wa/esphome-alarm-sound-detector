@@ -2,7 +2,11 @@
 
 This file is the specification for the C++ port: same framing, features,
 noise-floor tracking and scoring. Keep both in sync.
+
+Each preset carries its own spectral band (bin_lo..bin_hi) and detection
+parameters; see components/alarm_sound_detector/presets/preset.schema.json.
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -17,15 +21,31 @@ N_BINS = BIN_HI - BIN_LO + 1
 FLOOR_RISE_DB_PER_S = 3.0   # noise floor creeps up this fast; drops instantly
 FLOOR_RISE = FLOOR_RISE_DB_PER_S * HOP / SR
 
+# Default detection parameters (also the TM6 preset values).
+DEFAULT_THRESHOLD = 0.55
+DEFAULT_NEAR_THRESHOLD = 0.35
+DEFAULT_PERIOD_S = 3.125
+DEFAULT_PERIOD_TOL_S = 0.25
+DEFAULT_MIN_REPETITIONS = 2
+DEFAULT_REFRACTORY_S = 1.5
 
-def frames_db(x: np.ndarray) -> np.ndarray:
+
+def release_default(period_s: float | None) -> float:
+    """Alarm-off delay: with TM6 parameters this equals 2*period + 1."""
+    if period_s is None:
+        raise ValueError("release_s must be explicit when period_s is None")
+    return 2 * period_s + 1.0
+
+
+def frames_db(x: np.ndarray, bin_lo: int = BIN_LO, bin_hi: int = BIN_HI) -> np.ndarray:
     """Log power (dB) of selected bins for each hop. x: float mono at SR."""
+    n_bins = bin_hi - bin_lo + 1
     win = np.hanning(N_FFT + 1)[:-1].astype(np.float32)  # periodic Hann
     n = 1 + (len(x) - N_FFT) // HOP
-    out = np.empty((n, N_BINS), np.float32)
+    out = np.empty((n, n_bins), np.float32)
     for i in range(n):
         spec = np.fft.rfft(x[i * HOP:i * HOP + N_FFT] * win)
-        p = spec.real[BIN_LO:BIN_HI + 1] ** 2 + spec.imag[BIN_LO:BIN_HI + 1] ** 2
+        p = spec.real[bin_lo:bin_hi + 1] ** 2 + spec.imag[bin_lo:bin_hi + 1] ** 2
         out[i] = 10 * np.log10(p + 1e-10)
     return out
 
@@ -88,19 +108,37 @@ class StreamingDetector:
             ("near", t, score) for a candidate in [near_threshold, threshold),
             ("alarm_on", t, score), ("alarm_off", t, 0.0).
     t is the time (s) of the *end* of the matched window (i.e. when it is known).
+
+    period_s may be None: any units within release_s of each other chain
+    towards min_repetitions with no periodicity check (single-sound mode is
+    min_repetitions=1). With the TM6 parameters (period 3.125, release 7.25)
+    behaviour is identical to the original fixed 2*period+1 alarm-off rule.
     """
 
-    def __init__(self, qtmpl: np.ndarray, threshold=0.55, near_threshold=0.35,
-                 period_s=3.125, period_tol_s=0.25, min_repetitions=2,
-                 peak_window_s=0.4, refractory_s=1.5):
+    def __init__(self, qtmpl: np.ndarray, threshold=DEFAULT_THRESHOLD,
+                 near_threshold=DEFAULT_NEAR_THRESHOLD,
+                 period_s: float | None = DEFAULT_PERIOD_S,
+                 period_tol_s: float = DEFAULT_PERIOD_TOL_S,
+                 min_repetitions: int = DEFAULT_MIN_REPETITIONS,
+                 peak_window_s=0.4, refractory_s: float = DEFAULT_REFRACTORY_S,
+                 release_s: float | None = None,
+                 bin_lo: int = BIN_LO, bin_hi: int = BIN_HI):
         self.t = qtmpl
         self.W = qtmpl.shape[0]
+        self.bin_lo, self.bin_hi = bin_lo, bin_hi
+        self.n_bins = bin_hi - bin_lo + 1
+        if qtmpl.shape[1] != self.n_bins:
+            raise ValueError(
+                f"template width {qtmpl.shape[1]} != bin range {bin_lo}..{bin_hi}")
         self.hist = np.zeros_like(qtmpl, dtype=np.uint8)
         self.n = 0                      # frames seen
         self.floor: np.ndarray | None = None
         self.fps = SR / HOP
         self.thr, self.near = threshold, near_threshold
         self.period, self.tol, self.min_rep = period_s, period_tol_s, min_repetitions
+        if release_s is None:
+            release_s = release_default(period_s)
+        self.release = release_s
         self.peak_win = int(round(peak_window_s * self.fps))
         self.refr = int(round(refractory_s * self.fps))
         self.cand_start = -1; self.cand_best = 0.0; self.cand_best_n = 0
@@ -108,6 +146,9 @@ class StreamingDetector:
         self.alarm = False; self.last_score = 0.0
 
     def feed_frame_db(self, row_db: np.ndarray) -> list:
+        if len(row_db) != self.n_bins:
+            raise ValueError(
+                f"frame width {len(row_db)} != detector band width {self.n_bins}")
         if self.floor is None:
             self.floor = row_db.astype(np.float32).copy()
         self.floor = np.minimum(row_db, self.floor + FLOOR_RISE).astype(np.float32)
@@ -136,21 +177,26 @@ class StreamingDetector:
                 else:
                     ev.append(("near", tb, self.cand_best))
                 self.cand_start = -1
-        if self.alarm and now - self.unit_times[-1] > 2 * self.period + 1.0:
+        if self.alarm and now - self.unit_times[-1] > self.release:
             self.alarm = False; self.unit_times = []
             ev.append(("alarm_off", now, 0.0))
         return ev
 
     def _on_unit(self, t: float, score: float, ev: list) -> None:
-        # Keep the chain of units that are spaced by ~k*period (k=1,2 allows one miss).
-        if self.unit_times:
-            dt = t - self.unit_times[-1]
-            k = round(dt / self.period)
-            if not (k in (1, 2) and abs(dt - k * self.period) <= self.tol * k):
-                self.unit_times = [] if not self.alarm else self.unit_times
-                if self.alarm:
-                    return  # stray unit during an alarm: ignore, keep the chain
-        self.unit_times.append(t)
+        if self.period is None:
+            # No periodicity check: chain any units within release_s of the chain.
+            self.unit_times = [u for u in self.unit_times if t - u <= self.release]
+            self.unit_times.append(t)
+        else:
+            # Keep the chain of units that are spaced by ~k*period (k=1,2 allows one miss).
+            if self.unit_times:
+                dt = t - self.unit_times[-1]
+                k = round(dt / self.period)
+                if not (k in (1, 2) and abs(dt - k * self.period) <= self.tol * k):
+                    self.unit_times = [] if not self.alarm else self.unit_times
+                    if self.alarm:
+                        return  # stray unit during an alarm: ignore, keep the chain
+            self.unit_times.append(t)
         if not self.alarm and len(self.unit_times) >= self.min_rep:
             self.alarm = True
             ev.append(("alarm_on", t, score))

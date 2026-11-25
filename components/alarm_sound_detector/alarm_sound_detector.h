@@ -33,13 +33,19 @@ class AlarmSoundDetector : public Component {
   float get_setup_priority() const override { return setup_priority::AFTER_CONNECTION; }
 
   void set_microphone_source(microphone::MicrophoneSource *source) { this->mic_source_ = source; }
-  void set_template(const int8_t *data, uint16_t frames, uint16_t bins, const std::string &name,
-                    float period_s) {
+  // period_s <= 0 selects the single (no-periodicity) mode in the core.
+  void set_template(const int8_t *data, uint16_t frames, uint16_t bins, uint16_t bin_lo,
+                    uint16_t bin_hi, const std::string &name, float period_s, float refractory_s,
+                    float release_s) {
     this->tmpl_data_ = data;
     this->tmpl_frames_ = frames;
     this->tmpl_bins_ = bins;
+    this->bin_lo_ = bin_lo;
+    this->bin_hi_ = bin_hi;
     this->tmpl_name_ = name;
     this->period_s_ = period_s;
+    this->refractory_s_ = refractory_s;
+    this->release_s_ = release_s;
   }
   void set_threshold(float v) { this->threshold_ = v; }
   void set_near_threshold(float v) { this->near_threshold_ = v; }
@@ -72,8 +78,12 @@ class AlarmSoundDetector : public Component {
   const int8_t *tmpl_data_{nullptr};
   uint16_t tmpl_frames_{0};
   uint16_t tmpl_bins_{0};
+  uint16_t bin_lo_{13};
+  uint16_t bin_hi_{144};
   std::string tmpl_name_;
-  float period_s_{3.125f};
+  float period_s_{3.125f};  // <= 0: single (no-periodicity) mode
+  float refractory_s_{1.5f};
+  float release_s_{7.25f};
   float threshold_{0.55f};
   float near_threshold_{0.35f};
   float period_tol_s_{0.25f};
