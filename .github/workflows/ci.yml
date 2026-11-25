@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install Python dependencies
-        run: pip install -r tools/requirements.txt
+        run: pip install -r tools/requirements.txt "esphome==2026.11.0"
       - name: Unit, protocol, preset and C++/Python equivalence tests
         run: python -m pytest -q
 
@@ -123,7 +123,7 @@ jobs:
           done
       - name: Compile examples against this checkout
         run: |
-          printf 'wifi_ssid: "ci"\nwifi_password: "ci-password"\napi_encryption_key: "%s"\n' "$(head -c32 /dev/urandom | base64)" > examples/secrets.yaml
+          printf 'wifi_ssid: "ci"\nwifi_password: "ci-password"\napi_encryption_key: "%s"\ncapture_key: "ci-dummy-capture-key-0123456789"\n' "$(head -c32 /dev/urandom | base64)" > examples/secrets.yaml
           for f in examples/*.yaml; do
             [ "$(basename "$f")" = secrets.yaml ] && continue
             # Build from the checked-out component instead of GitHub.
