@@ -96,15 +96,28 @@ export function suggestBand(
     return { loHz: 400, hiHz: 4500, text: "No clear peak found — keeping 400–4500 Hz." };
   }
   const lo = Math.min(...keep) + curBinLo, hi = Math.max(...keep) + curBinLo;
-  const loHz = Math.max(31, Math.floor((lo * 16000) / 512 / 50) * 50);
-  const hiHz = Math.ceil((((hi + 1) * 16000) / 512 / 50)) * 50;
+  let loHz = Math.max(100, Math.floor((lo * 16000) / 512 / 50) * 50);
+  let hiHz = Math.min(7900, Math.ceil((((hi + 1) * 16000) / 512 / 50)) * 50);
+  const coreLo = loHz, coreHi = hiHz;
+  // A band of a few bins (a pure tone) makes background noise look like the
+  // template and any beep of that pitch match perfectly; keep at least about
+  // half an octave (min 1 kHz) around the sound so the quiet surroundings of
+  // the tone count too.
+  const minW = Math.max(1000, 0.5 * (loHz + hiHz) / 2);
+  if (hiHz - loHz < minW) {
+    const pad = (minW - (hiHz - loHz)) / 2;
+    loHz = Math.max(100, Math.floor((loHz - pad) / 50) * 50);
+    hiHz = Math.min(7900, Math.ceil((hiHz + pad) / 50) * 50);
+    if (hiHz - loHz < minW) { if (loHz === 100) hiHz = Math.min(7900, loHz + Math.ceil(minW / 50) * 50); else loHz = Math.max(100, hiHz - Math.ceil(minW / 50) * 50); }
+  }
+  const widened = loHz !== coreLo || hiHz !== coreHi;
   return {
     loHz, hiHz,
-    text: `Examples stand out most at ${loHz}–${hiHz} Hz (peak +${peak.toFixed(1)} dB over background).`,
+    text: `Examples stand out most at ${coreLo}–${coreHi} Hz (peak +${peak.toFixed(1)} dB over background)` +
+      (widened ? `; suggesting ${loHz}–${hiHz} Hz so the quiet around the tone is compared too.` : "."),
   };
 }
 
-/** Estimate the repetition period from example times within one recording. */
 /**
  * Estimate the repetition period from example centre times, grouped per
  * recording. Robust to (a) several alarm episodes in one recording (long gaps
@@ -144,11 +157,16 @@ export function estimatePeriod(groups: number[][]): { period: number | null; tex
 export function suggestThresholds(
   scores: Float32Array, firstFrame: number, expectedTimes: number[], W: number,
   ignoreTimes: number[] = [], // unreviewed candidates: neither positive nor background
+  refractoryS = 0, // the detector ignores matches this long after a repetition
 ): { threshold: number; near: number; margin: number; minPos: number; maxNeg: number } {
   const fps = FPS;
   const at = (t: number) => Math.round(t * fps) - firstFrame; // score index
   const skip = [...expectedTimes, ...ignoreTimes];
-  const isNearEx = (idx: number) => skip.some((t) => Math.abs(idx - at(t)) * 2 <= 2 * fps);
+  // Not background: within one template length / the refractory time (at least
+  // 1 s) of an example — partial overlaps and sub-peaks of the same sound score
+  // high by nature, and the detector ignores them during the refractory time.
+  const half = Math.max(fps, W, Math.round(refractoryS * fps));
+  const isNearEx = (idx: number) => skip.some((t) => Math.abs(idx - at(t)) <= half);
   let minPos = Infinity;
   for (const t of expectedTimes) {
     let best = -Infinity;
@@ -164,6 +182,16 @@ export function suggestThresholds(
   if (!isFinite(minPos)) minPos = 0.55;
   if (!isFinite(maxNeg)) maxNeg = 0.3;
   const threshold = Math.round(((minPos + maxNeg) / 2) * 100) / 100;
-  const near = Math.min(threshold - 0.05, Math.round((maxNeg + 0.05) * 100) / 100);
-  return { threshold, near: Math.max(0.05, near), margin: minPos - maxNeg, minPos, maxNeg };
+  const near = nearLevel(threshold, maxNeg);
+  return { threshold, near, margin: minPos - maxNeg, minPos, maxNeg };
+}
+
+/**
+ * Near-miss level: just above the loudest background, but no more than 0.2
+ * below the threshold (a very quiet background would otherwise report every
+ * small bump as a near miss) and at least 0.05 below it.
+ */
+export function nearLevel(threshold: number, maxNeg: number): number {
+  const v = Math.min(threshold - 0.05, Math.max(maxNeg + 0.05, threshold - 0.2));
+  return Math.round(Math.max(0.05, v) * 100) / 100;
 }

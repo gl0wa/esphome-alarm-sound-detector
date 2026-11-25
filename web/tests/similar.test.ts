@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { findSimilar } from "../src/similar";
 import { freshState } from "../src/store";
-import { estimatePeriod } from "../src/template";
+import { estimatePeriod, nearLevel, suggestBand } from "../src/template";
 import { wasmReady } from "./helpers";
 
 const SR = 16000;
@@ -54,5 +54,50 @@ describe("findSimilar with fast beeps", () => {
     expect(found.every((c) => c !== undefined)).toBe(true);
     const times = [(2.95 + 3.6) / 2, ...(found as number[])];
     expect(estimatePeriod([times]).period).toBeCloseTo(1.0, 1);
+  });
+});
+
+describe("find similar keeps earlier decisions", () => {
+  it("lists already accepted examples as accepted, not as new candidates", async () => {
+    await wasmReady();
+    const starts = [3, 4, 5, 6, 7];
+    const s = freshState();
+    s.recordings = [{ id: "r1", name: "beeps", pcm: beeps(starts, 0.55, 12) }];
+    s.duration = 0.65;
+    s.examples = [
+      { id: "e1", recId: "r1", t0: 2.95, t1: 3.6 },
+      { id: "e2", recId: "r1", t0: 4.0, t1: 4.6 }, // accepted in an earlier run
+    ];
+    findSimilar(s, "e1", 0.35);
+    const near = (t: number) => s.candidates.filter((c) => Math.abs((c.t0 + c.t1) / 2 - t) < 0.3);
+    expect(near(3.275).length).toBe(0); // the seed itself is not a candidate
+    expect(near(4.275).map((c) => [c.status, c.exampleId])).toEqual([["accepted", "e2"]]);
+    expect(near(5.275).map((c) => c.status)).toEqual(["pending"]);
+  });
+});
+
+describe("band and near-miss suggestions", () => {
+  it("widens a pure-tone band to about half an octave", () => {
+    const bins = 250, lo = 3;
+    const ex = new Float32Array(bins), bg = new Float32Array(bins);
+    const tone = Math.round(4031 / 31.25) - lo;
+    ex[tone] = 40; ex[tone + 1] = 30;
+    const r = suggestBand(ex, bg, bins, lo);
+    expect(r.loHz).toBeLessThanOrEqual(3100);
+    expect(r.hiHz).toBeGreaterThanOrEqual(5000);
+    expect(r.text).toContain("4000–4100");
+  });
+  it("keeps a wide band as found", () => {
+    const bins = 250, lo = 3;
+    const ex = new Float32Array(bins), bg = new Float32Array(bins);
+    for (let b = 10; b < 140; b++) ex[b - lo] = 20;
+    const r = suggestBand(ex, bg, bins, lo);
+    expect(r.hiHz - r.loHz).toBeGreaterThan(3500);
+    expect(r.text).not.toContain("suggesting");
+  });
+  it("near-miss level stays within 0.2 below the threshold", () => {
+    expect(nearLevel(0.44, 0.08)).toBe(0.24);
+    expect(nearLevel(0.55, 0.45)).toBe(0.5);
+    expect(nearLevel(0.5, 0.48)).toBe(0.45);
   });
 });

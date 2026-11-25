@@ -20,37 +20,46 @@ export function findSimilar(s: State, seedId: string, floor: number) {
   const win = f.data.slice(f0 * bins, (f0 + W) * bins);
   const q = quantizeTemplate(win);
   s.candidates = [];
-  // Minimum spacing between candidates: most of one template length, so fast
-  // repeats (e.g. beeps 1 s apart) are all found, but one sound is not listed twice.
-  const peakWin = Math.round(0.4 * FPS), refr = Math.max(peakWin, Math.round(0.7 * W));
+  // Candidates are the strongest local peaks, at least ~one template length
+  // apart (non-maximum suppression, strongest first): fast repeats such as
+  // beeps 1 s apart are all found, while the weaker sub-peaks inside one longer
+  // sound (a chime matching itself shifted) are not listed separately.
+  const peakWin = Math.round(0.4 * FPS), refr = Math.max(peakWin, Math.round(0.9 * W));
   for (const r of s.recordings) {
     const { scores, firstFrame } = runDetector(r.pcm, q, W, bins, {
       threshold: 2, near_threshold: 1.5, min_repetitions: 255,
       period_s: 3.125, period_tolerance_s: 0.25, refractory_s: 1.5, release_s: 7.25,
     }, s.band);
-    // Peak-pick above the floor (same shape as the firmware candidate logic).
-    let best = -1, bestI = -1, lastKept = -1e9;
-    const flush = (endI: number) => {
-      if (bestI >= 0 && endI - bestI >= peakWin) {
-        const frame = firstFrame + bestI; // 1-based end frame of the match
-        const t1 = frame / FPS, t0 = t1 - W / FPS;
-        const isSeed = r.id === seed.recId && Math.abs(t0 - (f0 / FPS)) < 0.5;
-        if (isSeed) lastKept = bestI;
-        else if (bestI - lastKept >= refr) {
-          lastKept = bestI;
-          s.candidates.push({ id: uid(), recId: r.id, t0: Math.max(0, t0), t1, score: best, status: "pending" });
-        }
-        best = -1; bestI = -1;
-      }
-    };
+    // Score index where an example's window ends (= where its match peaks).
+    const exIdx = (t0: number, t1: number) => exampleFrameRange(t0, t1, 1e9, W).f0 + W - firstFrame;
+    const peaks: number[] = [];
     for (let i = 0; i < scores.length; i++) {
       const v = scores[i];
-      if (v >= floor && i - lastKept >= refr) {
-        if (v > best) { best = v; bestI = i; }
+      if (v < floor) continue;
+      let isMax = true;
+      for (let k = Math.max(0, i - peakWin); k <= Math.min(scores.length - 1, i + peakWin) && isMax; k++) {
+        if (scores[k] > v || (scores[k] === v && k < i)) isMax = false;
       }
-      if (bestI >= 0 && i - bestI >= peakWin) flush(i);
+      if (isMax) peaks.push(i);
     }
-    flush(scores.length);
+    peaks.sort((a, b) => scores[b] - scores[a]);
+    const kept: number[] = [];
+    // Examples marked earlier: the seed is never listed; other examples show up
+    // as already accepted (once each) so the list reflects every decision.
+    const examples = s.examples.filter((e) => e.recId === r.id).map((e) => ({ e, i: exIdx(e.t0, e.t1), used: false }));
+    const seedEx = examples.find((x) => x.e.id === seed.id);
+    if (seedEx) { kept.push(seedEx.i); seedEx.used = true; }
+    for (const i of peaks) {
+      if (kept.some((k) => Math.abs(k - i) < refr)) continue;
+      kept.push(i);
+      const t1 = (firstFrame + i) / FPS, t0 = t1 - W / FPS;
+      const ex = examples.find((x) => !x.used && Math.abs(x.i - i) < refr);
+      if (ex) ex.used = true;
+      s.candidates.push({
+        id: uid(), recId: r.id, t0: Math.max(0, t0), t1, score: scores[i],
+        status: ex ? "accepted" : "pending", exampleId: ex?.e.id,
+      });
+    }
   }
   s.candidates.sort((a, b) => b.score - a.score);
 }

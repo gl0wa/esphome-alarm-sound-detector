@@ -27,7 +27,11 @@ Choose the range where your sound is clearly louder than the background:
 - “Suggest from examples” in step 3 picks the range where your examples stand
   out most from the background of the same recording.
 - Narrower is usually more robust (less background gets in), but keep all the
-  main tones of the sound inside. Default 400–4500 Hz suits most buzzers and
+  main tones of the sound inside. Not too narrow, though: for a single-pitch beep
+  a band of only a few bins makes plain background noise resemble the template
+  and any beep of the same pitch match perfectly. The suggestion therefore keeps
+  at least about half an octave (minimum 1 kHz) around the sound, e.g.
+  3000–5100 Hz for a 4 kHz beep. Default 400–4500 Hz suits most buzzers and
   chimes. The detector cannot hear above 8 kHz.
 
 ## Sound length
@@ -71,6 +75,8 @@ narrow the band or adjust the sound length.
 ## Near threshold
 
 `near_threshold`, default 0.35. Must be lower than the threshold.
+“Suggest thresholds” puts it just above the loudest background, but never more
+than 0.2 below the threshold.
 
 Peaks between this level and the threshold are reported as **near misses**
 (logged on the device, published to the match-score sensor, available as an
@@ -135,7 +141,11 @@ best:
 - If your sound fills only a small part of every box, the sound length is too
   long — reduce it in step 3 and run “Find similar” again.
 - Decisions can be changed at any time (“Undo”, “Accept instead”,
-  “Reject instead”).
+  “Reject instead”). Running “Find similar” again (e.g. after changing the sound
+  length) keeps your accepted examples and shows them as accepted.
+- The background used by “Suggest thresholds” leaves out everything within one
+  sound length or the refractory time (at least 1 s) of an example, so the
+  parts of the same alarm around it don't count as background.
 
 Examples you mark by hand do not need to be exactly the right length either: the
 builder takes one sound-length window centred on your selection (and fine-tunes
