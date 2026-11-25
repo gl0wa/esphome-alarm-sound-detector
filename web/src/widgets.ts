@@ -34,6 +34,16 @@ function autoLevels(v: Float32Array, pLo: number, pHi: number): { q: Uint8Array;
 }
 
 export interface Overlay { t0: number; t1: number; color: string; label?: string }
+/** A marked time range drawn on the spectrogram, optionally playable/resizable. */
+export interface Region {
+  id: string; t0: number; t1: number; color: string; label?: string;
+  editable?: boolean; playable?: boolean; deletable?: boolean;
+  action?: { text: string; title: string; run: () => void };
+}
+export interface SpecViewState { pxPerSec: number; scrollLeft: number }
+type DragMode = "select" | "scroll";
+const COARSE = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+const MIN_REGION_S = 0.05;
 export interface SpecBand { loHz: number; hiHz: number; binLo: number; binHi: number }
 type Mode = "sound" | "detector";
 
@@ -58,13 +68,25 @@ function fmtTime(t: number, step: number): string {
  *  so short beeps never disappear. */
 export class SpecView {
   root = document.createElement("div");
+  /** A new selection was drawn (or the pending one changed). */
   onSelect: ((t0: number, t1: number) => void) | null = null;
+  /** An editable region was resized (fires when the drag ends). */
+  onRegionChange: ((id: string, t0: number, t1: number) => void) | null = null;
+  onRegionPlay: ((id: string) => void) | null = null;
+  onRegionDelete: ((id: string) => void) | null = null;
+  /** Tap/click without dragging: e.g. play from there. */
+  onTap: ((t: number) => void) | null = null;
   pxPerSec = 100;
   private scroll: HTMLDivElement;
   private inner: HTMLDivElement;
   private canvas = document.createElement("canvas");
   private cursor: HTMLDivElement;
   private sel: HTMLDivElement;
+  private regionLayer: HTMLDivElement;
+  private regions: Region[] = [];
+  private dragMode: DragMode = COARSE ? "scroll" : "select";
+  private dragBtns!: Record<DragMode, HTMLButtonElement>;
+  private hintEl!: HTMLDivElement;
   private legend: HTMLSpanElement;
   private modeBtns: Record<Mode, HTMLButtonElement>;
   private mode: Mode = "sound";
@@ -73,7 +95,6 @@ export class SpecView {
   private duration = 0;
   private sound: Grid | null = null;
   private det: Grid | null = null;
-  private overlays: Overlay[] = [];
   private cursorT: number | null = null;
   private raf = 0;
   private detRange: [number, number] = [0, 0];
@@ -91,6 +112,16 @@ export class SpecView {
       sound: mk("sound", "Sound", "Normal spectrogram of the recording, 0–8 kHz"),
       detector: mk("detector", "What the detector hears", "The detector's input: only its frequency band, relative to the background noise (steady noise fades out)"),
     };
+    const dm = el("span", "seg", bar);
+    const mkd = (m: DragMode, text: string, title: string) => {
+      const b = el("button", "", dm); b.textContent = text; b.title = title;
+      b.onclick = () => { this.dragMode = m; this.updateButtons(); };
+      return b;
+    };
+    this.dragBtns = {
+      scroll: mkd("scroll", "✋ Scroll", "Dragging moves along the recording (long-press to select)"),
+      select: mkd("select", "↔ Select", "Dragging selects a time range"),
+    };
     const zoom = el("span", "seg", bar);
     const zb = (text: string, title: string, fn: () => void) => { const b = el("button", "", zoom); b.textContent = text; b.title = title; b.onclick = fn; };
     zb("−", "Zoom out", () => this.zoomAround(this.pxPerSec / 1.5));
@@ -103,6 +134,8 @@ export class SpecView {
     this.cursor = el("div", "spec-cursor", this.inner);
     this.sel = el("div", "spec-sel", this.inner);
     this.sel.hidden = true;
+    this.regionLayer = el("div", "spec-regions", this.inner) as HTMLDivElement;
+    this.hintEl = el("div", "spec-hint muted", this.root) as HTMLDivElement;
     parent.appendChild(this.root);
 
     this.scroll.addEventListener("scroll", () => this.schedule());
@@ -113,30 +146,170 @@ export class SpecView {
       e.preventDefault();
       this.zoomAround(this.pxPerSec * Math.exp(-e.deltaY * 0.01), e.clientX);
     }, { passive: false });
-    // Drag to select.
-    let anchor: number | null = null;
-    const toT = (e: PointerEvent) => {
-      const r = this.inner.getBoundingClientRect();
-      return Math.max(0, Math.min(this.duration, (e.clientX - r.left) / this.pxPerSec));
-    };
-    this.canvas.addEventListener("pointerdown", (e) => {
-      anchor = toT(e);
-      this.canvas.setPointerCapture(e.pointerId);
-      this.showSel(anchor, anchor);
-    });
-    this.canvas.addEventListener("pointermove", (e) => {
-      if (anchor === null) return;
-      const t = toT(e);
-      this.showSel(Math.min(anchor, t), Math.max(anchor, t));
-    });
-    this.canvas.addEventListener("pointerup", (e) => {
-      if (anchor === null) return;
-      const t = toT(e), a = Math.min(anchor, t), b = Math.max(anchor, t);
-      anchor = null;
-      if (b - a > 0.05) this.onSelect?.(a, b);
-      else this.sel.hidden = true;
-    });
+    this.installGestures();
     this.updateButtons();
+  }
+
+
+  /** Pointer gestures on the canvas (mouse, touch and pen):
+   *  - drag: select a range (Select mode, or always with a mouse) or scroll (Scroll mode);
+   *  - long-press then drag (touch): select even in Scroll mode;
+   *  - two fingers: pinch to zoom, move to scroll;
+   *  - tap/click without moving: onTap(time). */
+  private installGestures() {
+    const c = this.canvas;
+    const pts = new Map<number, { x: number; y: number }>();
+    let g: null | { id: number; kind: "pending" | "select" | "pan"; x0: number; y0: number; scroll0: number; anchor: number; timer: number; isMouse: boolean } = null;
+    let pinch: null | { d0: number; px0: number; tAnchor: number } = null;
+    const toT = (clientX: number) => {
+      const r = this.inner.getBoundingClientRect();
+      return Math.max(0, Math.min(this.duration, (clientX - r.left) / this.pxPerSec));
+    };
+    const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
+    const mid = () => { const [a, b] = [...pts.values()]; return (a.x + b.x) / 2; };
+    const startSelect = () => {
+      if (!g) return;
+      g.kind = "select";
+      this.showSel(g.anchor, g.anchor);
+      if (!g.isMouse) navigator.vibrate?.(15);
+    };
+    c.addEventListener("pointerdown", (e) => {
+      if (e.button > 0) return;
+      try { c.setPointerCapture(e.pointerId); } catch { /* capture is a nicety, not required */ }
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) {
+        if (g) { clearTimeout(g.timer); if (g.kind === "select") this.sel.hidden = true; }
+        g = null;
+        const r = this.scroll.getBoundingClientRect();
+        pinch = { d0: dist(), px0: this.pxPerSec, tAnchor: (this.scroll.scrollLeft + mid() - r.left) / this.pxPerSec };
+        return;
+      }
+      if (pts.size > 2) return;
+      const isMouse = e.pointerType === "mouse";
+      g = { id: e.pointerId, kind: "pending", x0: e.clientX, y0: e.clientY, scroll0: this.scroll.scrollLeft, anchor: toT(e.clientX), timer: 0, isMouse };
+      if (!isMouse && this.dragMode === "scroll") {
+        g.timer = window.setTimeout(() => { if (g && g.kind === "pending") startSelect(); }, 450);
+      }
+    });
+    c.addEventListener("pointermove", (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && pts.size === 2) {
+        const r = this.scroll.getBoundingClientRect();
+        this.pxPerSec = Math.max(2, Math.min(1500, pinch.px0 * (dist() / pinch.d0)));
+        this.layout();
+        this.scroll.scrollLeft = Math.max(0, pinch.tAnchor * this.pxPerSec - (mid() - r.left));
+        return;
+      }
+      if (!g || e.pointerId !== g.id) return;
+      const dx = e.clientX - g.x0, moved = Math.abs(dx) > (g.isMouse ? 3 : 8) || Math.abs(e.clientY - g.y0) > 8;
+      if (g.kind === "pending" && moved) {
+        clearTimeout(g.timer);
+        if (g.isMouse || this.dragMode === "select") startSelect();
+        else g.kind = "pan";
+      }
+      if (g.kind === "pan") this.scroll.scrollLeft = Math.max(0, g.scroll0 - dx);
+      else if (g.kind === "select") {
+        const t = toT(e.clientX);
+        this.showSel(Math.min(g.anchor, t), Math.max(g.anchor, t));
+        this.edgeScroll(e.clientX);
+      }
+    });
+    const end = (e: PointerEvent, cancelled: boolean) => {
+      pts.delete(e.pointerId);
+      if (pinch) { if (pts.size < 2) pinch = null; return; }
+      if (!g || e.pointerId !== g.id) return;
+      clearTimeout(g.timer);
+      const done = g; g = null;
+      if (cancelled) { if (done.kind === "select") this.sel.hidden = true; return; }
+      if (done.kind === "pending") { this.onTap?.(toT(e.clientX)); return; }
+      if (done.kind === "select") {
+        const t = toT(e.clientX), a = Math.min(done.anchor, t), b = Math.max(done.anchor, t);
+        this.sel.hidden = true;
+        if (b - a >= MIN_REGION_S) this.onSelect?.(a, b);
+      }
+    };
+    c.addEventListener("pointerup", (e) => end(e, false));
+    c.addEventListener("pointercancel", (e) => end(e, true));
+    c.addEventListener("contextmenu", (e) => e.preventDefault()); // long-press on touch
+  }
+
+  /** While dragging near the edge of the view, keep scrolling. */
+  private edgeScroll(clientX: number) {
+    const r = this.scroll.getBoundingClientRect(), zone = 28;
+    if (clientX < r.left + zone) this.scroll.scrollLeft -= 12;
+    else if (clientX > r.right - zone) this.scroll.scrollLeft += 12;
+  }
+
+  /** Marked ranges (examples, candidates, the pending selection). */
+  setRegions(rs: Region[]) {
+    this.regions = rs.map((r) => ({ ...r }));
+    this.renderRegions();
+  }
+
+  private renderRegions() {
+    const L = this.regionLayer;
+    L.innerHTML = "";
+    for (const r of this.regions) {
+      const box = el("div", "rg" + (r.editable ? " editable" : ""), L);
+      box.style.setProperty("--c", r.color);
+      const place = () => {
+        box.style.left = `${r.t0 * this.pxPerSec}px`;
+        box.style.width = `${Math.max(2, (r.t1 - r.t0) * this.pxPerSec)}px`;
+      };
+      place();
+      (box as HTMLElement & { place?: () => void }).place = place;
+      const top = el("div", "rg-top", box);
+      if (r.playable) {
+        const b = el("button", "rg-btn", top); b.textContent = "▶"; b.title = "Play this part";
+        b.onclick = (e) => { e.stopPropagation(); this.onRegionPlay?.(r.id); };
+      }
+      if (r.label) el("span", "rg-label", top).textContent = r.label;
+      if (r.action) {
+        const b = el("button", "rg-btn rg-action", top); b.textContent = r.action.text; b.title = r.action.title;
+        b.onclick = (e) => { e.stopPropagation(); r.action!.run(); };
+      }
+      if (r.deletable) {
+        const b = el("button", "rg-btn", top); b.textContent = "✕"; b.title = "Remove";
+        b.onclick = (e) => { e.stopPropagation(); this.onRegionDelete?.(r.id); };
+      }
+      if (!r.editable) continue;
+      for (const side of ["l", "r"] as const) {
+        const h = el("div", `rg-h rg-h-${side}`, box);
+        h.title = "Drag to resize";
+        h.addEventListener("pointerdown", (e) => {
+          e.stopPropagation(); e.preventDefault();
+          h.setPointerCapture(e.pointerId);
+          box.classList.add("dragging");
+          const move = (ev: PointerEvent) => {
+            const rect = this.inner.getBoundingClientRect();
+            const t = Math.max(0, Math.min(this.duration, (ev.clientX - rect.left) / this.pxPerSec));
+            if (side === "l") r.t0 = Math.min(t, r.t1 - MIN_REGION_S);
+            else r.t1 = Math.max(t, r.t0 + MIN_REGION_S);
+            place();
+            this.edgeScroll(ev.clientX);
+          };
+          const up = () => {
+            h.removeEventListener("pointermove", move);
+            h.removeEventListener("pointerup", up);
+            h.removeEventListener("pointercancel", up);
+            box.classList.remove("dragging");
+            this.onRegionChange?.(r.id, r.t0, r.t1);
+          };
+          h.addEventListener("pointermove", move);
+          h.addEventListener("pointerup", up);
+          h.addEventListener("pointercancel", up);
+        });
+      }
+    }
+  }
+
+  getView(): SpecViewState { return { pxPerSec: this.pxPerSec, scrollLeft: this.scroll.scrollLeft }; }
+
+  setView(v: SpecViewState) {
+    this.pxPerSec = v.pxPerSec;
+    this.layout();
+    this.scroll.scrollLeft = v.scrollLeft;
   }
 
   /** Show a recording. `band` is the detector band (marked in the sound view and
@@ -167,7 +340,10 @@ export class SpecView {
     this.schedule();
   }
 
-  setOverlays(o: Overlay[]) { this.overlays = o; this.schedule(); }
+  /** Read-only overlays (kept for callers that only need highlights). */
+  setOverlays(o: Overlay[]) {
+    this.setRegions(o.map((x, i) => ({ id: `ov${i}`, t0: x.t0, t1: x.t1, color: x.color, label: x.label })));
+  }
 
   setCursor(t: number | null) {
     this.cursorT = t;
@@ -222,12 +398,20 @@ export class SpecView {
 
   private updateButtons() {
     for (const m of ["sound", "detector"] as Mode[]) this.modeBtns[m].classList.toggle("on", this.mode === m);
+    if (this.dragBtns) for (const m of ["scroll", "select"] as DragMode[]) this.dragBtns[m].classList.toggle("on", this.dragMode === m);
+    if (this.hintEl) {
+      this.hintEl.textContent = this.dragMode === "select"
+        ? "Drag across a sound to select it. Tap/click to play from there. Drag the edges of a marked part to resize it."
+        : (COARSE ? "Swipe to move, pinch to zoom, long-press then drag to select. Tap to play from there. Drag the edges of a marked part to resize it."
+                  : "Drag to move along the recording (with a mouse, dragging selects). Click to play from there.");
+    }
   }
 
   private layout() {
     this.inner.style.width = `${Math.max(1, Math.round(this.duration * this.pxPerSec))}px`;
     if (this.cursorT !== null) this.cursor.style.left = `${this.cursorT * this.pxPerSec}px`;
     if (!this.sel.hidden) this.showSel(Number(this.sel.dataset.t0), Number(this.sel.dataset.t1));
+    for (const b of Array.from(this.regionLayer.children)) (b as HTMLElement & { place?: () => void }).place?.();
     this.schedule();
   }
 
@@ -324,14 +508,6 @@ export class SpecView {
       g.fillStyle = "rgba(255,255,255,.5)"; g.fillRect(x, H, 1, 5);
       g.fillStyle = "rgba(255,255,255,.85)";
       g.fillText(fmtTime(t, tStep), x + 3, H + AX / 2 + 1);
-    }
-    // Overlays (examples / candidates).
-    for (const o of this.overlays) {
-      const x = o.t0 * this.pxPerSec - x0, w = Math.max(2, (o.t1 - o.t0) * this.pxPerSec);
-      if (x + w < 0 || x > viewW) continue;
-      g.fillStyle = o.color + "33"; g.fillRect(x, 0, w, H);
-      g.strokeStyle = o.color; g.lineWidth = 2; g.strokeRect(x + 1, 1, w - 2, H - 2); g.lineWidth = 1;
-      if (o.label) { g.fillStyle = o.color; g.fillText(o.label, x + 4, 4); }
     }
   }
 }

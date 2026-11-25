@@ -28,7 +28,7 @@ export function renderExamples(root: HTMLElement, s: State, refresh: () => void)
     radio.type = "radio"; radio.name = "seed"; radio.checked = e.id === seedId;
     radio.onchange = () => { (renderExamples as { seed?: string }).seed = e.id; };
     h("span", "", item, `${rec?.name ?? "?"} ${fmtT(e.t0)}–${fmtT(e.t1)}${e.id === seedId ? " (seed)" : ""}`);
-    button(item, "Play", () => { if (rec) player.play(rec, e.t0); });
+    button(item, "Play", () => { if (rec) player.play(rec, e.t0, e.t1); });
     button(item, "✕", () => {
       s.examples = s.examples.filter((x) => x !== e);
       refresh();

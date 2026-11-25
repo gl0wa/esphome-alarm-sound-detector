@@ -3,7 +3,7 @@ import { bufferToPcm16, fileToPcm16, Player, recordFromMic } from "../audio";
 import { SR } from "../const";
 import { button, fmtT, h, note } from "../helpers";
 import { Recording, State, uid } from "../store";
-import { SpecView } from "../widgets";
+import { type Region, SpecView, type SpecViewState } from "../widgets";
 
 export interface RecCallbacks {
   refresh: () => void; // re-render dependent views
@@ -100,48 +100,84 @@ export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) 
   }
 
   // spectrogram of the selected recording
-  const rec: Recording | undefined = s.recordings.find((r) => r.id === selId) ?? s.recordings[0];
+  const rec: Recording = s.recordings.find((r) => r.id === selId) ?? s.recordings[0];
   (renderRecordings as { sel?: string }).sel = rec.id;
   h("h3", "", root, `Spectrogram — ${rec.name}`);
-  note(root, "Time runs left to right, pitch bottom to top; brighter = louder. Drag across the sound to select it, then “Mark as example”. Scroll sideways; +/−, Fit or Ctrl/⌘ + scroll zooms.");
+  note(root, "Time runs left to right, pitch bottom to top; brighter = louder. Select a sound, then mark it as an example; marked parts can be played (▶), resized by their edges, or removed (✕).");
   const specWrap = h("div", "", root);
   const spec = new SpecView(specWrap);
   const ctl = h("div", "row", root);
   const playBtn = button(ctl, "▶ Play", () => player.toggle(rec));
-  const stopBtn = button(ctl, "■ Stop", () => player.stop());
-  void stopBtn;
+  button(ctl, "■ Stop", () => player.stop());
   const selLabel = h("span", "muted", ctl, "no selection");
   let pendingSel: { t0: number; t1: number } | null = null;
-  spec.onSelect = (t0, t1) => {
-    pendingSel = { t0, t1 };
-    selLabel.textContent = `selected ${fmtT(t0)} – ${fmtT(t1)}`;
-    markBtn.disabled = false;
+  const markBtn = button(ctl, "Mark as example", () => markSelection());
+  markBtn.disabled = true;
+
+  const exampleIdx = () => s.examples.filter((e) => e.recId === rec.id);
+  const regions = (): Region[] => [
+    ...exampleIdx().map((e, i) => ({
+      id: e.id, t0: e.t0, t1: e.t1, color: "#3ddc84", label: `example ${i + 1}`,
+      editable: true, playable: true, deletable: true,
+    })),
+    ...s.candidates.filter((c) => c.recId === rec.id && c.status === "pending").map((c) => ({
+      id: c.id, t0: c.t0, t1: c.t1, color: "#ffbf3f", label: c.score.toFixed(2), playable: true,
+    })),
+    ...(pendingSel ? [{
+      id: SEL, t0: pendingSel.t0, t1: pendingSel.t1, color: "#4da3ff", label: "selection",
+      editable: true, playable: true, deletable: true,
+      action: { text: "＋ Example", title: "Mark this selection as an example", run: () => markSelection() },
+    }] : []),
+  ];
+  const showSelection = () => {
+    selLabel.textContent = pendingSel ? `selected ${fmtT(pendingSel.t0)} – ${fmtT(pendingSel.t1)} (${(pendingSel.t1 - pendingSel.t0).toFixed(2)} s)` : "no selection";
+    markBtn.disabled = !pendingSel;
+    spec.setRegions(regions());
   };
-  const markBtn = button(ctl, "Mark as example", () => {
+  const keepView = () => { viewState.set(rec.id, spec.getView()); };
+  function markSelection() {
     if (!pendingSel) return;
     s.examples.push({ id: uid(), recId: rec.id, t0: pendingSel.t0, t1: pendingSel.t1 });
     pendingSel = null;
-    spec.clearSelection();
-    selLabel.textContent = "no selection";
-    markBtn.disabled = true;
+    keepView();
     cb.refresh();
-  });
-  markBtn.disabled = true;
+  }
+  spec.onSelect = (t0, t1) => { pendingSel = { t0, t1 }; showSelection(); };
+  spec.onRegionChange = (id, t0, t1) => {
+    if (id === SEL) { pendingSel = { t0, t1 }; showSelection(); return; }
+    const ex = s.examples.find((e) => e.id === id);
+    if (!ex) return;
+    ex.t0 = t0; ex.t1 = t1;
+    keepView();
+    cb.refresh(); // examples feed the later steps
+  };
+  spec.onRegionDelete = (id) => {
+    if (id === SEL) { pendingSel = null; showSelection(); return; }
+    s.examples = s.examples.filter((e) => e.id !== id);
+    keepView();
+    cb.refresh();
+  };
+  spec.onRegionPlay = (id) => {
+    const r = id === SEL ? pendingSel : (s.examples.find((e) => e.id === id) ?? s.candidates.find((c) => c.id === id));
+    if (r) { player.play(rec, r.t0, r.t1); playBtn.textContent = "▶ Play"; }
+  };
+  spec.onTap = (t) => player.play(rec, t);
   try {
     spec.setData(rec.pcm, s.band);
-    spec.setOverlays([
-      ...s.examples.filter((e) => e.recId === rec.id).map((e) => ({ t0: e.t0, t1: e.t1, color: "#3ddc84", label: "ex" })),
-      ...s.candidates.filter((c) => c.recId === rec.id && c.status === "pending").map((c) => ({ t0: c.t0, t1: c.t1, color: "#ffbf3f", label: `${c.score.toFixed(2)}` })),
-    ]);
+    const v = viewState.get(rec.id);
+    if (v) spec.setView(v);
+    showSelection();
   } catch (e) {
     note(root, `Spectrogram failed: ${e}`);
     return;
   }
   player.onTime = (t) => spec.setCursor(t);
   player.onEnd = () => { spec.setCursor(null); playBtn.textContent = "▶ Play"; };
-  const origToggle = player.toggle.bind(player);
-  void origToggle;
 }
+
+const SEL = "__selection";
+/** Zoom/scroll per recording, so edits (which re-render the view) keep your place. */
+const viewState = new Map<string, SpecViewState>();
 
 class RecPlayer {
   private p = new Player();
@@ -152,9 +188,9 @@ class RecPlayer {
     this.p.onTime = (t) => this.onTime?.(t);
     this.p.onEnd = () => this.onEnd?.();
   }
-  play(r: Recording, from = 0) {
+  play(r: Recording, from = 0, until?: number) {
     if (this.current !== r) { this.p.load(r.pcm); this.current = r; }
-    this.p.play(from);
+    this.p.play(from, until);
   }
   toggle(r: Recording) {
     if (this.p.playing) this.p.stop();

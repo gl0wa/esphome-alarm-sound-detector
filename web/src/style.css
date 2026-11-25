@@ -94,7 +94,34 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 .spec-legend { font-size: 0.8rem; }
 .spec-scroll { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: 8px; background: #000004; }
 .spec-inner { position: relative; height: 240px; }
-.spec canvas { display: block; position: sticky; left: 0; touch-action: pan-x; cursor: crosshair; }
+.spec canvas { display: block; position: sticky; left: 0; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.spec-hint { font-size: 0.8rem; margin-top: 4px; }
+/* Marked regions: the box itself lets gestures through; only its buttons/handles catch them. */
+.spec-regions { position: absolute; inset: 0 0 20px 0; pointer-events: none; }
+.rg { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--c) 18%, transparent);
+  border: 2px solid var(--c); border-radius: 4px; box-sizing: border-box; pointer-events: none; }
+.rg.dragging { background: color-mix(in srgb, var(--c) 30%, transparent); }
+.rg-top { position: absolute; z-index: 2; top: 2px; left: 2px; display: flex; gap: 3px; align-items: center;
+  white-space: nowrap; pointer-events: none; }
+.rg-label { color: #fff; background: color-mix(in srgb, var(--c) 70%, #000); font-size: 0.72rem;
+  padding: 1px 5px; border-radius: 4px; }
+.rg-btn { pointer-events: auto; min-width: 26px; height: 26px; padding: 0 6px; margin: 0; font-size: 0.8rem;
+  line-height: 1; border-radius: 6px; background: color-mix(in srgb, var(--c) 80%, #000); color: #fff;
+  border: 1px solid rgba(255,255,255,.35); touch-action: manipulation; }
+.rg-action { font-weight: 600; }
+/* Resize handles: a thin visible grip with a much wider invisible touch target. */
+.rg-h { position: absolute; z-index: 1; top: 32px; bottom: 0; width: 28px; pointer-events: auto; cursor: ew-resize; touch-action: none; }
+.rg-h-l { left: -15px; }
+.rg-h-r { right: -15px; }
+.rg-h::after { content: ""; position: absolute; top: 50%; left: 50%; width: 6px; height: 36px;
+  transform: translate(-50%, -50%); border-radius: 3px; background: var(--c); box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+@media (pointer: coarse) {
+  button { min-height: 40px; }
+  .rg-btn { min-width: 34px; height: 34px; font-size: 0.95rem; }
+  .rg-h { width: 40px; top: 40px; }
+  .rg-h-l { left: -21px; }
+  .rg-h-r { right: -21px; }
+}
 .spec-cursor {
   position: absolute; top: 0; bottom: 0; width: 2px;
   background: #fff; display: none; pointer-events: none;

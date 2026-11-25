@@ -100,7 +100,8 @@ export class Player {
     this.buffer = buf;
   }
 
-  play(from = 0) {
+  /** Play from `from` seconds; if `until` is given, stop there. */
+  play(from = 0, until?: number) {
     this.stop(false);
     if (!this.buffer) return;
     const ctx = audioCtx();
@@ -110,7 +111,8 @@ export class Player {
     this.offset = Math.max(0, Math.min(from, this.buffer.duration));
     this.startAt = ctx.currentTime;
     this.src.onended = () => { this.stop(false); this.onEnd?.(); };
-    this.src.start(0, this.offset);
+    if (until !== undefined && until > this.offset) this.src.start(0, this.offset, until - this.offset);
+    else this.src.start(0, this.offset);
     const tick = () => {
       this.onTime?.(this.offset + (audioCtx().currentTime - this.startAt));
       this.raf = requestAnimationFrame(tick);
