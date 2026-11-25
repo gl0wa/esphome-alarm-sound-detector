@@ -1,8 +1,8 @@
-# Thermomix alert detector - M5Stack Stamp S3 + INMP441
-# Base firmware: Wi-Fi, encrypted API, password-protected OTA, diagnostics.
+# Reference firmware used during development: M5Stack Stamp S3 + INMP441 detecting
+# the Thermomix TM6 alarm. Builds the component from this checkout (../components).
+# For your own device start from examples/ instead.
 substitutions:
-  # Overridable by derived configs (e.g. the dev capture firmware raises
-  # this to 48000). Default keeps the sound_level sanity sensor config.
+  # The detector requires 16 kHz. Derived configs may override it, e.g. for capture.
   mic_sample_rate: "16000"
 
 esphome:
@@ -10,7 +10,7 @@ esphome:
   friendly_name: Thermomix Detector
   min_version: 2026.11.0
   project:
-    name: "thermomix-alert-detector.esphome"
+    name: "gl0wa.esphome-alarm-sound-detector"
     version: "0.2.2"
 
 esp32:
@@ -113,8 +113,7 @@ alarm_sound_detector:
     microphone: mic
     bits_per_sample: 16
   template: thermomix_tm6
-  # threshold / near_threshold / period / period_tolerance / min_repetitions
-  # all take the component defaults tuned for the TM6 chime.
+  # Detection parameters default to the preset's values; override here if needed.
   on_alarm_start:
     then:
       - logger.log: "TM6 alarm started"

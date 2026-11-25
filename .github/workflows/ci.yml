@@ -46,3 +46,22 @@ jobs:
       - name: Compile
         working-directory: firmware
         run: esphome compile ${{ matrix.config }}
+
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install ESPHome
+        run: pip install "esphome==2026.11.0"
+      - name: Compile examples against this checkout
+        run: |
+          printf 'wifi_ssid: "ci"\nwifi_password: "ci-password"\napi_encryption_key: "%s"\n' "$(head -c32 /dev/urandom | base64)" > examples/secrets.yaml
+          for f in examples/*.yaml; do
+            [ "$(basename "$f")" = secrets.yaml ] && continue
+            # Build from the checked-out component instead of GitHub.
+            sed "s|- source: github://gl0wa/esphome-alarm-sound-detector@main|- source: { type: local, path: ../components }|" "$f" > "${f%.yaml}.ci.yaml"
+            esphome compile "${f%.yaml}.ci.yaml"
+          done
