@@ -1,7 +1,7 @@
 // Step 5: export the preset (JSON + YAML + labels), session save/restore.
 import { buildPresetDoc, buildYamlSnippet, PresetMeta, validatePreset } from "../preset";
 import { button, download, field, h, note, textArea } from "../helpers";
-import { clearSession, loadSession, saveSession, State } from "../store";
+import { clearSession, State, storageUsed } from "../store";
 import { REPO_URL } from "../help";
 
 type ExportTab = "esphome" | "github";
@@ -166,10 +166,15 @@ export function renderExport(root: HTMLElement, s: State, refresh: () => void) {
   }
   renderTab();
 
-  h("h3", "", root, "Session (this browser only)");
+  h("h3", "", root, "Your session");
+  note(root, "Your recordings, examples and settings are saved automatically in this browser (IndexedDB) and offered " +
+    "again when you come back. Nothing is uploaded. Clearing browser data for this site removes them.");
   const srow = h("div", "row", root);
   const smsg = h("span", "muted", srow, "");
-  button(srow, "Save session", async () => { await saveSession(s); smsg.textContent = "Saved in this browser (IndexedDB)."; });
-  button(srow, "Restore session", async () => { smsg.textContent = await loadSession(s); refresh(); });
-  button(srow, "Forget saved session", async () => { await clearSession(); smsg.textContent = "Cleared."; });
+  void storageUsed().then((u) => { if (u) smsg.textContent = `Browser storage used by this site: ${u}.`; });
+  button(srow, "Delete saved session", async () => {
+    if (!confirm("Delete the saved recordings and labels from this browser? The current page keeps working until you reload.")) return;
+    await clearSession();
+    smsg.textContent = "Deleted from this browser.";
+  });
 }

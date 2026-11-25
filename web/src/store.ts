@@ -65,8 +65,12 @@ export function freshState(): State {
   };
 }
 
-// ---- minimal IndexedDB persistence (recordings + labels, no audio leaves device) ----
+// ---- IndexedDB persistence (stays in this browser; nothing is uploaded) ----
+// Keys in one object store: "meta" = labels/settings/template (small, rewritten on
+// every change), "rec:<id>" = one recording's PCM (written once). "current" is the
+// legacy single-blob format from earlier versions, still readable.
 const DB = "preset-studio", STORE = "sessions";
+const SESSION_VERSION = 2;
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
@@ -77,53 +81,140 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveSession(s: State): Promise<void> {
-  const db = await openDb();
-  const payload = {
-    recordings: s.recordings.map((r) => ({ id: r.id, name: r.name, pcm: r.pcm.buffer.slice(0) as ArrayBuffer })),
-    examples: s.examples,
-    band: s.band, duration: s.duration, repeating: s.repeating,
-    params: s.params, meta: s.meta,
-  };
-  await new Promise<void>((res, rej) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(payload, "current");
+function req<T>(r: IDBRequest<T>): Promise<T> {
+  return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+}
+
+function done(tx: IDBTransaction): Promise<void> {
+  return new Promise((res, rej) => {
     tx.oncomplete = () => res();
     tx.onerror = () => rej(tx.error);
+    tx.onabort = () => rej(tx.error ?? new Error("transaction aborted"));
   });
-  db.close();
+}
+
+interface SavedMeta {
+  version: number;
+  savedAt: number;
+  recordings: { id: string; name: string; samples: number }[];
+  examples: Example[];
+  candidates: Candidate[];
+  band: Band; duration: number; repeating: boolean;
+  template: { q: ArrayBuffer; frames: number; bins: number } | null;
+  tmplMean: ArrayBuffer | null;
+  params: DetParams;
+  margin: State["margin"];
+  confuserId: string;
+  meta: State["meta"];
+}
+
+export interface SessionSummary { savedAt: number; recordings: number; examples: number; hasTemplate: boolean }
+
+
+/** Save everything. Recordings are written once; labels and settings every time. */
+export async function saveSession(s: State): Promise<void> {
+  const db = await openDb();
+  try {
+    const store = (mode: IDBTransactionMode) => db.transaction(STORE, mode).objectStore(STORE);
+    const existing = new Set((await req(store("readonly").getAllKeys())).map(String));
+    const tx = db.transaction(STORE, "readwrite");
+    const os = tx.objectStore(STORE);
+    for (const r of s.recordings) {
+      const key = `rec:${r.id}`;
+      if (!existing.has(key)) os.put(r.pcm.slice().buffer, key); // audio is written once; copy avoids storing a shared buffer
+    }
+    const keep = new Set(s.recordings.map((r) => `rec:${r.id}`));
+    for (const k of existing) if (k.startsWith("rec:") && !keep.has(k)) os.delete(k);
+    if (existing.has("current")) os.delete("current"); // migrate away from the legacy blob
+    const meta: SavedMeta = {
+      version: SESSION_VERSION, savedAt: Date.now(),
+      recordings: s.recordings.map((r) => ({ id: r.id, name: r.name, samples: r.pcm.length })),
+      examples: s.examples, candidates: s.candidates,
+      band: s.band, duration: s.duration, repeating: s.repeating,
+      template: s.template ? { q: s.template.q.slice().buffer, frames: s.template.frames, bins: s.template.bins } : null,
+      tmplMean: s.tmplMean ? s.tmplMean.slice().buffer : null,
+      params: s.params, margin: s.margin, confuserId: s.confuserId, meta: s.meta,
+    };
+    os.put(meta, "meta");
+    await done(tx);
+  } finally {
+    db.close();
+  }
+}
+
+/** What is saved, without loading the audio. null = nothing saved. */
+export async function peekSession(): Promise<SessionSummary | null> {
+  const db = await openDb();
+  try {
+    const os = db.transaction(STORE, "readonly").objectStore(STORE);
+    const meta = (await req(os.get("meta"))) as SavedMeta | undefined;
+    if (meta) return { savedAt: meta.savedAt, recordings: meta.recordings.length, examples: meta.examples.length, hasTemplate: !!meta.template };
+    const legacy = (await req(os.get("current"))) as { recordings: unknown[]; examples: unknown[] } | undefined;
+    if (legacy) return { savedAt: 0, recordings: legacy.recordings.length, examples: legacy.examples?.length ?? 0, hasTemplate: false };
+    return null;
+  } finally {
+    db.close();
+  }
 }
 
 export async function loadSession(s: State): Promise<string> {
   const db = await openDb();
-  const payload = await new Promise<unknown>((res, rej) => {
-    const tx = db.transaction(STORE, "readonly");
-    const q = tx.objectStore(STORE).get("current");
-    q.onsuccess = () => res(q.result);
-    q.onerror = () => rej(q.error);
-  });
-  db.close();
-  if (!payload) return "Nothing saved yet.";
-  const p = payload as {
-    recordings: { id: string; name: string; pcm: ArrayBuffer }[];
-    examples: Example[]; band: Band; duration: number; repeating: boolean;
-    params: DetParams; meta: State["meta"];
-  };
-  s.recordings = p.recordings.map((r) => ({ id: r.id, name: r.name, pcm: new Int16Array(r.pcm) }));
-  s.examples = p.examples ?? [];
-  s.candidates = [];
-  s.band = p.band; s.duration = p.duration; s.repeating = p.repeating;
-  s.params = p.params; s.meta = p.meta;
-  s.template = null; s.tmplMean = null; s.evals = []; s.margin = null;
-  return `Restored ${s.recordings.length} recording(s), ${s.examples.length} example(s). Re-check the Build step (template is rebuilt, not stored).`;
+  try {
+    const os = db.transaction(STORE, "readonly").objectStore(STORE);
+    const meta = (await req(os.get("meta"))) as SavedMeta | undefined;
+    if (!meta) {
+      const legacy = (await req(os.get("current"))) as {
+        recordings: { id: string; name: string; pcm: ArrayBuffer }[];
+        examples: Example[]; band: Band; duration: number; repeating: boolean; params: DetParams; meta: State["meta"];
+      } | undefined;
+      if (!legacy) return "Nothing saved yet.";
+      Object.assign(s, freshState());
+      s.recordings = legacy.recordings.map((r) => ({ id: r.id, name: r.name, pcm: new Int16Array(r.pcm) }));
+      s.examples = legacy.examples ?? [];
+      s.band = legacy.band; s.duration = legacy.duration; s.repeating = legacy.repeating;
+      s.params = legacy.params; s.meta = legacy.meta;
+      return `Restored ${s.recordings.length} recording(s) and ${s.examples.length} example(s).`;
+    }
+    const recs: Recording[] = [];
+    const missing: string[] = [];
+    for (const r of meta.recordings) {
+      const buf = (await req(os.get(`rec:${r.id}`))) as ArrayBuffer | undefined;
+      if (buf) recs.push({ id: r.id, name: r.name, pcm: new Int16Array(buf) });
+      else missing.push(r.name);
+    }
+    const ids = new Set(recs.map((r) => r.id));
+    Object.assign(s, freshState());
+    s.recordings = recs;
+    s.examples = meta.examples.filter((e) => ids.has(e.recId));
+    s.candidates = (meta.candidates ?? []).filter((c) => ids.has(c.recId));
+    s.band = meta.band; s.duration = meta.duration; s.repeating = meta.repeating;
+    s.template = meta.template ? { q: new Int8Array(meta.template.q), frames: meta.template.frames, bins: meta.template.bins } : null;
+    s.tmplMean = meta.tmplMean ? new Float32Array(meta.tmplMean) : null;
+    s.params = meta.params; s.margin = meta.margin; s.confuserId = meta.confuserId ?? ""; s.meta = meta.meta;
+    return `Restored ${s.recordings.length} recording(s), ${s.examples.length} example(s), ` +
+      `${s.candidates.length} candidate(s)${s.template ? " and the built template" : ""}.` +
+      (missing.length ? ` Missing audio for: ${missing.join(", ")}.` : "");
+  } finally {
+    db.close();
+  }
 }
 
 export async function clearSession(): Promise<void> {
   const db = await openDb();
-  await new Promise<void>((res) => {
+  try {
     const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).delete("current");
-    tx.oncomplete = () => res();
-  });
-  db.close();
+    tx.objectStore(STORE).clear();
+    await done(tx);
+  } finally {
+    db.close();
+  }
+}
+
+/** Approximate browser storage used by this site, for display. */
+export async function storageUsed(): Promise<string> {
+  try {
+    const e = await navigator.storage?.estimate?.();
+    if (e?.usage === undefined) return "";
+    return `${(e.usage / 1e6).toFixed(1)} MB`;
+  } catch { return ""; }
 }

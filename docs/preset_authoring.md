@@ -10,6 +10,10 @@ Site URL (after the repo goes public + Pages is enabled):
 **https://gl0wa.github.io/esphome-alarm-sound-detector/**.
 To try it locally: `cd web && npm install && npm run build && npm run preview`.
 
+Your work (recordings, examples, decisions, settings and the built template) is
+saved automatically in your browser and offered again when you come back; it
+never leaves your device. Delete it any time on the Export step.
+
 ## 1. Record
 
 - **Best:** flash the `audio_capture` dev firmware (`firmware/thermomix-detector-dev.yaml`),

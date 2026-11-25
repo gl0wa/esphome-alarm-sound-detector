@@ -79,12 +79,20 @@ export function renderEvaluate(root: HTMLElement, s: State, refresh: () => void)
     const expected = s.examples.filter((e) => e.recId === rec.id)
       .map((e) => (exampleFrameRange(e.t0, e.t1, 1e9, W).f0 + W) / FPS);
     const missed = expected.filter((t) => !units.some((u) => Math.abs(u.t - t) < 0.6));
-    const faUnits = units.filter((u) => !expected.some((t) => Math.abs(u.t - t) < 1.0));
+    // Unreviewed candidates are probably real occurrences: neither caught examples nor false.
+    const unreviewed = s.candidates.filter((c) => c.recId === rec.id && c.status === "pending")
+      .map((c) => (exampleFrameRange(c.t0, c.t1, 1e9, W).f0 + W) / FPS);
+    const onUnreviewed = units.filter((u) => !expected.some((t) => Math.abs(u.t - t) < 1.0) &&
+      unreviewed.some((t) => Math.abs(u.t - t) < 1.0));
+    const faUnits = units.filter((u) => !expected.some((t) => Math.abs(u.t - t) < 1.0) && !onUnreviewed.includes(u));
+    // An alarm is legitimate if it starts within/just after a known or unreviewed occurrence.
+    const legit = [...spans.map((sp) => sp.t1), ...unreviewed];
     const faAlarms = ev.events.filter((e) => e.type === "alarm_on" &&
-      !spans.some((sp) => e.t >= sp.t0 - 1 && e.t <= sp.t1 + 8));
+      !legit.some((t) => e.t >= t - W / FPS - 1 && e.t <= t + 8));
     const line = h("p", missed.length || faUnits.length || faAlarms.length ? "warn" : "ok", root);
     const parts = [
-      `${units.length}/${expected.length} examples caught`,
+      `${expected.length - missed.length}/${expected.length} examples caught`,
+      ...(onUnreviewed.length ? [`${onUnreviewed.length} on unreviewed candidates (review them in step 2)`] : []),
       `near misses: ${ev.events.filter((e) => e.type === "near").length}`,
       `max background score: ${ev.maxNeg.toFixed(2)}`,
     ];
