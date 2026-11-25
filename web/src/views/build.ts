@@ -62,6 +62,9 @@ export function renderBuild(root: HTMLElement, s: State, refresh: () => void) {
       s.repeating = true; repSel.value = "rep";
       s.params.period_s = r.period;
       s.params.release_s = Math.round((2 * r.period + 1) * 1000) / 1000;
+      // Must stay shorter than the period, or every other repetition is ignored
+      // (fast beeps, e.g. one per second).
+      s.params.refractory_s = Math.min(1.5, Math.round(0.6 * r.period * 10) / 10);
     } else {
       s.repeating = false; repSel.value = "single";
       s.params.period_s = null;
