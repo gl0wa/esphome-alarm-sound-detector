@@ -85,10 +85,16 @@ button:hover:not(:disabled) { border-color: var(--accent); }
 }
 .drop.over { border-color: var(--accent); color: var(--text); }
 .spec { margin: 8px 0; }
-.spec-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
-.spec-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
-.spec-inner { position: relative; }
-.spec canvas { display: block; }
+.spec-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+.spec-bar .seg { display: inline-flex; }
+.spec-bar .seg button { border-radius: 0; margin: 0; }
+.spec-bar .seg button:first-child { border-radius: 8px 0 0 8px; }
+.spec-bar .seg button:last-child { border-radius: 0 8px 8px 0; }
+.spec-bar .seg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+.spec-legend { font-size: 0.8rem; }
+.spec-scroll { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: 8px; background: #000004; }
+.spec-inner { position: relative; height: 240px; }
+.spec canvas { display: block; position: sticky; left: 0; touch-action: pan-x; cursor: crosshair; }
 .spec-cursor {
   position: absolute; top: 0; bottom: 0; width: 2px;
   background: #fff; display: none; pointer-events: none;

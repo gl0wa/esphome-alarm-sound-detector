@@ -1,7 +1,6 @@
 // Step 1: load recordings (files or microphone), spectrogram, select regions.
 import { bufferToPcm16, fileToPcm16, Player, recordFromMic } from "../audio";
 import { SR } from "../const";
-import { getFeatures } from "../dsp";
 import { button, fmtT, h, note } from "../helpers";
 import { Recording, State, uid } from "../store";
 import { SpecView } from "../widgets";
@@ -104,9 +103,9 @@ export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) 
   const rec: Recording | undefined = s.recordings.find((r) => r.id === selId) ?? s.recordings[0];
   (renderRecordings as { sel?: string }).sel = rec.id;
   h("h3", "", root, `Spectrogram — ${rec.name}`);
-  note(root, "Drag across the sound to select it, then “Mark as example”. Playback cursor follows the audio; scroll sideways, +/− zooms.");
+  note(root, "Time runs left to right, pitch bottom to top; brighter = louder. Drag across the sound to select it, then “Mark as example”. Scroll sideways; +/−, Fit or Ctrl/⌘ + scroll zooms.");
   const specWrap = h("div", "", root);
-  const spec = new SpecView(specWrap, `${s.band.loHz}–${s.band.hiHz} Hz band`);
+  const spec = new SpecView(specWrap);
   const ctl = h("div", "row", root);
   const playBtn = button(ctl, "▶ Play", () => player.toggle(rec));
   const stopBtn = button(ctl, "■ Stop", () => player.stop());
@@ -129,8 +128,7 @@ export function renderRecordings(root: HTMLElement, s: State, cb: RecCallbacks) 
   });
   markBtn.disabled = true;
   try {
-    const f = getFeatures(rec.pcm, s.band.binLo, s.band.binHi);
-    spec.setData(f.data, f.frames, f.bins, rec.pcm.length / SR);
+    spec.setData(rec.pcm, s.band);
     spec.setOverlays([
       ...s.examples.filter((e) => e.recId === rec.id).map((e) => ({ t0: e.t0, t1: e.t1, color: "#3ddc84", label: "ex" })),
       ...s.candidates.filter((c) => c.recId === rec.id && c.status === "pending").map((c) => ({ t0: c.t0, t1: c.t1, color: "#ffbf3f", label: `${c.score.toFixed(2)}` })),
