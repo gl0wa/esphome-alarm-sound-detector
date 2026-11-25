@@ -47,7 +47,9 @@ jobs:
           emcc --version | head -1
       - name: Preset studio tests (builds WASM, vitest incl. WASM-vs-ref.py)
         working-directory: web
-        run: npm test
+        run: |
+          npm ci
+          npm test
 
   firmware:
     runs-on: ubuntu-latest
