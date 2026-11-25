@@ -4,14 +4,10 @@
 packages:
   base: !include thermomix-detector.yaml
 
-# Capture at 48 kHz: do NOT assume the alarm spectrum fits below 8 kHz.
+# Capture at 16 kHz (same stream the detector uses): the capture component
+# follows the microphone stream info, and 16 kHz covers the alarm spectrum.
 substitutions:
-  mic_sample_rate: "48000"
-
-external_components:
-  - source:
-      type: local
-      path: ../components
+  mic_sample_rate: "16000"
 
 audio_capture:
   id: capture
@@ -20,7 +16,7 @@ audio_capture:
     bits_per_sample: 24
     gain_factor: 1
   port: 6060
-  buffer_size: 131072  # ~0.9 s at 48 kHz/24-bit; absorbs Wi-Fi stalls
+  buffer_size: 131072  # ~2.7 s at 16 kHz/24-bit; absorbs Wi-Fi stalls
   psk: !secret capture_psk
 
 switch:

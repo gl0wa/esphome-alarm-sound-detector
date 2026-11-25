@@ -11,7 +11,7 @@ esphome:
   min_version: 2026.11.0
   project:
     name: "thermomix-alert-detector.esphome"
-    version: "0.1.1"
+    version: "0.2.0"
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -23,6 +23,11 @@ esp32:
 logger:
   level: INFO
   hardware_uart: USB_SERIAL_JTAG
+
+external_components:
+  - source:
+      type: local
+      path: ../components
 
 api:
   encryption:
@@ -62,6 +67,14 @@ sensor:
       name: "Sound Level Peak"
     rms:
       name: "Sound Level RMS"
+  - platform: alarm_sound_detector
+    alarm_sound_detector_id: tm6
+    name: "Alarm match score"
+
+binary_sensor:
+  - platform: alarm_sound_detector
+    alarm_sound_detector_id: tm6
+    name: "Thermomix alarm"
 
 text_sensor:
   - platform: debug
@@ -95,3 +108,18 @@ microphone:
     channel: left
     bits_per_sample: 32bit
     sample_rate: ${mic_sample_rate}
+
+alarm_sound_detector:
+  id: tm6
+  microphone:
+    microphone: mic
+    bits_per_sample: 16
+  template: thermomix_tm6
+  # threshold / near_threshold / period / period_tolerance / min_repetitions
+  # all take the component defaults tuned for the TM6 chime.
+  on_alarm_start:
+    then:
+      - logger.log: "TM6 alarm started"
+  on_alarm_end:
+    then:
+      - logger.log: "TM6 alarm ended"

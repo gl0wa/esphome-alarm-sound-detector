@@ -28,7 +28,7 @@ async def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", required=True)
     ap.add_argument("--secrets", default="firmware/secrets.yaml")
-    ap.add_argument("cmd", choices=["list", "switch", "press"])
+    ap.add_argument("cmd", choices=["list", "states", "switch", "press"])
     ap.add_argument("name", nargs="?")
     ap.add_argument("state", nargs="?", choices=["on", "off"])
     a = ap.parse_args()
@@ -37,6 +37,15 @@ async def main() -> None:
     await cli.connect(login=True)
     try:
         entities, _ = await cli.list_entities_services()
+        if a.cmd == "states":
+            names = {e.key: e.name for e in entities}
+            seen: dict[str, object] = {}
+            cli.subscribe_states(lambda st: seen.__setitem__(names.get(st.key, str(st.key)),
+                                                           getattr(st, "state", None)))
+            await asyncio.sleep(3)
+            for k, v in sorted(seen.items()):
+                print(f"{k:32s} {v}")
+            return
         if a.cmd == "list":
             for e in entities:
                 print(f"{type(e).__name__:28s} {e.name}")
