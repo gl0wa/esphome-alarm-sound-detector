@@ -13,7 +13,8 @@ export function renderExamples(root: HTMLElement, s: State, refresh: () => void)
   h("h2", "", root, "2 · Examples & find similar");
   note(root, "Mark one clear occurrence of the sound, then “Find similar” scans every recording with the " +
     "firmware detector and lists everything that resembles it. Accept the true ones, reject the rest. " +
-    "Aim for 3+ accepted examples from different episodes, plus recordings of sounds it must NOT match.");
+    "Aim for 3+ accepted examples from different episodes, plus recordings of sounds it must NOT match. " +
+    "If the alarm is several identical beeps, mark ONE beep — each beep is an example, and the rhythm is set in step 3.");
 
   if (!s.examples.length) {
     note(root, "No examples yet — select a region on a spectrogram in step 1.");

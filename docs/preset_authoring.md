@@ -54,6 +54,40 @@ flow (steps 3–7 below — unchanged in behaviour), with two recording steps fi
    firmware should not stay installed. The preset JSON can also be downloaded
    (for hand-written YAML), and the second tab walks you through sharing it on GitHub.
 
+### What to mark as one example
+
+Mark the **smallest unit that repeats**, not the whole alarm. If an appliance
+beeps several times in a row (e.g. a rice cooker or washing machine playing
+5 × 0.5 s beeps, 0.5 s apart), every beep is a separate example:
+
+| Alarm | Mark as one example | Sound length | Repeating? | Period | Repetitions before alarm |
+|---|---|---|---|---|---|
+| Thermomix TM6: 1.3 s chime, repeats every 3.1 s | one chime | ~1.3 s | yes | 3.125 s | 2 |
+| 5 short beeps, one per second, then silence | one beep | ~0.5–0.6 s | yes | ~1.0 s | 3 (4 if false alarms, 2 if misses) |
+| A melody played once | the whole melody | its length (≤ 5 s) | no | – | 1 |
+
+Why not the whole beep sequence as one example:
+
+- The rhythm check (several matches exactly one period apart) is what rejects
+  random kitchen noise; with one long template there is no rhythm to check.
+- Each alarm would give you only one example, and the detector could react
+  only after the last beep.
+- Memory grows with the sound length (about 1 KB per 0.1 s at the default band).
+
+For fast beeps:
+
+1. Mark one beep (centre the selection on it), set **sound length** to about one
+   beep, then run “Find similar” and accept every beep.
+2. “Estimate repetition” reads the period from the spacing of your examples and
+   also sets *ignore re-matches for* (refractory) to 0.6 × period. Refractory
+   must be shorter than the period, otherwise every other beep is ignored.
+3. Choose **repetitions before alarm** below the number of beeps the appliance
+   plays, so a masked beep or two do not lose the alarm.
+4. A plain single-tone beep is less distinctive than a melody and other
+   appliances' beeps may score close to it. Record those (microwave, oven timer)
+   as background and check that the margin from “Suggest thresholds” is at least
+   +0.10.
+
 What NOT to share: household audio stays yours. Never attach recordings to GitHub
 issues/PRs — presets contain no audio, so they are safe to contribute.
 

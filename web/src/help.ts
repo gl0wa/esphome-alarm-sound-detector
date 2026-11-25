@@ -40,7 +40,7 @@ export const HELP: Record<string, HelpEntry> = {
   },
   refractory: {
     anchor: "refractory",
-    text: "After a repetition is counted, ignore new matches for this long, so one sound is not counted twice. Keep it shorter than the period.",
+    text: "After a repetition is counted, ignore new matches for this long, so one sound is not counted twice. Keep it shorter than the period (for beeps 1 s apart about 0.6 s); “Estimate repetition” sets it for you.",
   },
   release: {
     anchor: "release",

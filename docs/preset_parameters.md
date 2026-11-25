@@ -42,7 +42,8 @@ characteristic part of the sound with little silence around it:
 - Too long: the window contains mostly background or the gaps between
   repetitions, which dilutes the match, and the template needs more memory
   (about 1 KB per 0.1 s at the default band).
-- For a repeating alarm use one repetition, not the whole sequence.
+- For a repeating alarm use one repetition, not the whole sequence — e.g. one
+  beep of a 5-beep alarm (see [what to mark as one example](preset_authoring.md#what-to-mark-as-one-example)).
 
 ## Repeating or single
 
@@ -108,7 +109,9 @@ increase it if the device misses alarms although every repetition is detected.
 
 After a repetition is counted, new matches are ignored for this long so that one
 sound (whose score can peak several times) is not counted twice. Keep it longer
-than the sound itself but shorter than the period.
+than the sound itself but shorter than the period — for fast beeps (e.g. one per
+second) the default is too long and would skip every other beep. “Estimate
+repetition” sets it to 0.6 × period (at most 1.5 s).
 
 ## Release
 
