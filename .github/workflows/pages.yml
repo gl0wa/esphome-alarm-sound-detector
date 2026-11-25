@@ -28,10 +28,16 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
-      # Pinned to match the local toolchain (brew emscripten 7.0.1).
-      - uses: mymindstorm/setup-emsdk@v1
-        with:
-          version: "7.0.1"
+      # Emscripten pinned to match the local toolchain (7.0.1).
+      - name: Install Emscripten
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 7.0.1
+          "$RUNNER_TEMP/emsdk/emsdk" activate 7.0.1
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          echo "PATH=$PATH" >> "$GITHUB_ENV"
+          echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
+          emcc --version | head -1
       - name: Build site
         working-directory: web
         run: |
